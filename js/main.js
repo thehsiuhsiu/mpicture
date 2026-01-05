@@ -357,7 +357,7 @@ const setupResizeWarning = () => {
   }
 
   const checkWindowSize = () => {
-    if (window.innerWidth < 1100 || window.innerHeight < 750) {
+    if (window.innerWidth < 1100 || window.innerHeight < 700) {
       resizeWarningModal.style.display = "flex";
     } else {
       resizeWarningModal.style.display = "none";
@@ -554,3 +554,4 @@ const setupThemeToggle = () => {
     themeSelector?.classList.remove("open");
   });
 };
+
