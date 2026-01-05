@@ -96,7 +96,7 @@ const handleGenerate = async () => {
 const generateAccidentTagsText = (tags) => {
   const tagTexts = ACCIDENT_TAG_OPTIONS.map((option) => {
     const isChecked = tags && tags[option.id];
-    const checkbox = isChecked ? "▓" : "□";
+    const checkbox = isChecked ? "■" : "□";
     if (option.id === "other") {
       // 僅在勾選「其他」時才顯示輸入的內容
       const otherText =
@@ -612,3 +612,4 @@ const createDocumentStyles = (docx) => {
     ],
   };
 };
+
