@@ -11,7 +11,7 @@ import { showLoadingModal, hideLoadingModal } from "./utils.js";
 const generateAccidentTagsText = (tags) => {
   const tagTexts = ACCIDENT_TAG_OPTIONS.map((option) => {
     const isChecked = tags && tags[option.id];
-    const checkbox = isChecked ? "▓" : "□";
+    const checkbox = isChecked ? "■" : "□";
     if (option.id === "other") {
       const otherText =
         isChecked && tags.otherText ? tags.otherText : "___________";
@@ -349,3 +349,4 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
 
   return content;
 };
+
