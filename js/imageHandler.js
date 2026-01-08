@@ -387,6 +387,10 @@ export const handleViewModeChange = (mode) => {
  * 處理圖片容器拖曳事件
  */
 export const handleImageContainerEvents = (e) => {
+  // 確保 e.target 是有效的 Element
+  if (!e.target || !(e.target instanceof Element)) {
+    return;
+  }
   // 忽略來自 textarea 的拖曳事件
   if (e.target.tagName === "TEXTAREA") return;
 
@@ -821,3 +825,4 @@ export const handleImageClick = (e) => {
     setEditingImage(imageId);
   }
 };
+
