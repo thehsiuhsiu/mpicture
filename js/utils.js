@@ -72,7 +72,7 @@ export const EMPTY_STATE_HTML = `
 
     </p>
 
-    <p style="font-size: 0.85em; color: #888;">💡 可拖曳照片調整順序 ｜ 可點選照片進行旋轉編輯 ｜支援部分 HEIC 格式自動轉換</p>
+    <p style="font-size: 0.85em; color: #888;">💡 可拖曳照片調整順序 ｜ 可點選照片進行旋轉編輯</p>
 `;
 
 // ============ 圖片處理函數 ============
@@ -226,4 +226,5 @@ export const showConversionModal = () => {
 export const hideConversionModal = () => {
   document.getElementById("conversionModal").style.display = "none";
 };
+
 
