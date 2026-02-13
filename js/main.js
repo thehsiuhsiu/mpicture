@@ -39,7 +39,7 @@ const updateToggleState = (value) => {
   labels.forEach((label) => {
     label.classList.toggle(
       "active",
-      label.getAttribute("data-value") === value
+      label.getAttribute("data-value") === value,
     );
   });
 
@@ -47,7 +47,7 @@ const updateToggleState = (value) => {
   document.body.classList.remove(
     "format-left",
     "format-middle",
-    "format-right"
+    "format-right",
   );
   document.body.classList.add(`format-${value}`);
 
@@ -82,6 +82,30 @@ const updateSidebarFields = (format) => {
 };
 
 /**
+ * 初始化文件內容標題輸入框
+ */
+const initDocumentTitles = () => {
+  const docTitleLeft = document.getElementById("docTitleLeft");
+  const docTitleMiddle = document.getElementById("docTitleMiddle");
+
+  // 監聽左側標題變化
+  if (docTitleLeft) {
+    docTitleLeft.addEventListener("input", (e) => {
+      const newTitle = e.target.value.trim() || "刑案照片黏貼表";
+      state.customDocTitles.left = newTitle;
+    });
+  }
+
+  // 監聽右側標題變化
+  if (docTitleMiddle) {
+    docTitleMiddle.addEventListener("input", (e) => {
+      const newTitle = e.target.value.trim() || "非道路交通事故照片黏貼紀錄表";
+      state.customDocTitles.middle = newTitle;
+    });
+  }
+};
+
+/**
  * 主要初始化函數
  */
 const init = () => {
@@ -98,6 +122,9 @@ const init = () => {
     console.error("必要的 DOM 元素未找到");
     return;
   }
+
+  // 初始化文件內容標題
+  initDocumentTitles();
 
   elements.imageInput.addEventListener("change", handleImageSelection);
 
@@ -135,7 +162,7 @@ const init = () => {
     if (!state.selectedImages.length) {
       showToast(
         "打包照片的紙箱準備好了…但沒有看到照片，只看到小貓在裡面睡了一整個下午💤",
-        "error"
+        "error",
       );
       return;
     }
@@ -221,7 +248,7 @@ const setupEventListeners = () => {
   window.addEventListener("error", (event) => {
     console.error("Uncaught error:", event.error);
     alert(
-      "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請不要聯繫支持團隊。"
+      "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請不要聯繫支持團隊。",
     );
   });
 };
@@ -268,7 +295,7 @@ const setupPhotoSizeSlider = () => {
   sizeDecBtn.addEventListener("click", () => {
     const newValue = Math.max(
       parseInt(slider.min),
-      parseInt(slider.value) - 40
+      parseInt(slider.value) - 40,
     );
     slider.value = newValue;
     updateImageSizes();
@@ -278,7 +305,7 @@ const setupPhotoSizeSlider = () => {
   sizeIncBtn.addEventListener("click", () => {
     const newValue = Math.min(
       parseInt(slider.max),
-      parseInt(slider.value) + 40
+      parseInt(slider.value) + 40,
     );
     slider.value = newValue;
     updateImageSizes();
@@ -405,7 +432,7 @@ const setupMobileSidebar = () => {
     (e) => {
       touchStartY = e.changedTouches[0].screenY;
     },
-    { passive: true }
+    { passive: true },
   );
 
   sidebar.addEventListener(
@@ -414,7 +441,7 @@ const setupMobileSidebar = () => {
       touchEndY = e.changedTouches[0].screenY;
       handleSwipeGesture();
     },
-    { passive: true }
+    { passive: true },
   );
 
   const handleSwipeGesture = () => {
@@ -554,4 +581,3 @@ const setupThemeToggle = () => {
     themeSelector?.classList.remove("open");
   });
 };
-

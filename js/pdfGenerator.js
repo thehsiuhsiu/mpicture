@@ -40,7 +40,9 @@ export const handleGeneratePDF = async () => {
     const caseAddress = document.getElementById("caseAddress").value;
     const caseNumber = document.getElementById("caseNumber").value;
 
-    const title = FORMAT_TITLES[state.selectedFormat];
+    const title =
+      state.customDocTitles[state.selectedFormat] ||
+      FORMAT_TITLES[state.selectedFormat];
 
     let printContent = buildPrintHTML(title);
 
@@ -52,13 +54,13 @@ export const handleGeneratePDF = async () => {
         caseReason,
         caseUnit,
         caseAddress,
-        caseNumber
+        caseNumber,
       );
     } else if (state.selectedFormat === "middle") {
       printContent += buildTrafficAccidentContent(
         title,
         isAutoDate,
-        manualDate
+        manualDate,
       );
     }
 
@@ -193,7 +195,7 @@ const buildCriminalContent = (
   caseReason,
   caseUnit,
   caseAddress,
-  caseNumber
+  caseNumber,
 ) => {
   let content = "";
   const totalPages = Math.ceil(state.selectedImages.length / 2);
@@ -245,7 +247,7 @@ const buildCriminalContent = (
       const address2 = state.imageAddresses[img2.id] || caseAddress;
       const desc2 = state.imageDescriptions[img2.id] || "";
       content += `
-                <div class="spacer"></div>
+                <div style="height: 10px;"></div>
                 <table>
                 
                     <tr><td class="photo-cell" colspan="6"><img src="${
@@ -323,7 +325,8 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
       const tags2 = state.imageAccidentTags[img2.id] || {};
       const tagsText2 = generateAccidentTagsText(tags2);
       content += `
-                <div class="spacer"></div>
+                <div style="height: 20px;"></div>
+                
                 <table>
                     <tr><td class="photo-cell" colspan="6"><img src="${
                       img2.data
@@ -349,4 +352,3 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
 
   return content;
 };
-

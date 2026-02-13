@@ -48,7 +48,7 @@ const handleGenerate = async () => {
           customAddress: state.imageAddresses[image.id] || "",
           accidentTags: state.imageAccidentTags[image.id] || {},
         };
-      })
+      }),
     );
 
     const docx = window.docx;
@@ -68,7 +68,7 @@ const handleGenerate = async () => {
         caseDate,
         caseNumber,
       },
-      resizedImages
+      resizedImages,
     );
 
     const blob = await docx.Packer.toBlob(doc);
@@ -117,11 +117,11 @@ const createDocument = (docx, format, formData, images) => {
 
   switch (format) {
     case "left":
-      title = "刑案照片黏貼表";
+      title = state.customDocTitles.left || "刑案照片黏貼表";
       createContent = createCriminalContent;
       break;
     case "middle":
-      title = "(非)道路交通事故照片黏貼紀錄表";
+      title = state.customDocTitles.middle || "非道路交通事故照片黏貼紀錄表";
       createContent = createTrafficAccidentContent;
       break;
     default:
@@ -182,7 +182,7 @@ const createCriminalContent = (
   images,
   formData,
   isAutoDate,
-  manualDate
+  manualDate,
 ) => {
   return createImageTables(docx, images, formData, isAutoDate, manualDate);
 };
@@ -198,8 +198,8 @@ const createImageTables = (docx, images, formData, isAutoDate, manualDate) => {
         i + 1,
         formData,
         isAutoDate,
-        manualDate
-      )
+        manualDate,
+      ),
     );
     if (i + 1 < images.length) {
       tables.push(
@@ -209,15 +209,15 @@ const createImageTables = (docx, images, formData, isAutoDate, manualDate) => {
           i + 2,
           formData,
           isAutoDate,
-          manualDate
-        )
+          manualDate,
+        ),
       );
     }
     if (i + 2 < images.length) {
       tables.push(
         new docx.Paragraph({
           children: [new docx.PageBreak()],
-        })
+        }),
       );
     }
   }
@@ -273,7 +273,7 @@ const createImageTable = (
   index,
   formData,
   isAutoDate,
-  manualDate
+  manualDate,
 ) => {
   let dateToShow;
   if (image.customDate) {
@@ -426,7 +426,7 @@ const createTrafficAccidentContent = (
   images,
   formData,
   isAutoDate,
-  manualDate
+  manualDate,
 ) => {
   const tables = [];
   for (let i = 0; i < images.length; i++) {
@@ -437,8 +437,8 @@ const createTrafficAccidentContent = (
         i + 1,
         formData,
         isAutoDate,
-        manualDate
-      )
+        manualDate,
+      ),
     );
 
     if (i < images.length - 1) {
@@ -458,7 +458,7 @@ const createTrafficAccidentImageTable = (
   index,
   formData,
   isAutoDate,
-  manualDate
+  manualDate,
 ) => {
   let dateToShow;
   if (image.customDate) {
@@ -612,4 +612,3 @@ const createDocumentStyles = (docx) => {
     ],
   };
 };
-
