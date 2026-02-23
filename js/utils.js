@@ -53,9 +53,10 @@ export const showToast = (message, type = "info", duration = 3000) => {
  */
 export const EMPTY_STATE_HTML = `
     <h2 class="disclaimer-primary"">🔞 免責聲明 🔞</h2>
-    <p >本網頁為個人開發之輔助工具，僅供參考使用 !<br>
+    <p >本網頁為個人開發之輔助工具，僅供參考使用，嚴禁不法利用 !<br>
         使用者利用此網頁所產生之文件，開發者不負任何法律責任。<br> 
     </p>
+    <p style="font-size: 2em; #e31b1b;">偽造、變造公文書，足以生損害於公眾或他人者，處一年以上七年以下有期徒刑。</p>
    
     <h3 class="disclaimer-primary">《快速開始》</h3>
 
@@ -226,5 +227,6 @@ export const showConversionModal = () => {
 export const hideConversionModal = () => {
   document.getElementById("conversionModal").style.display = "none";
 };
+
 
 
