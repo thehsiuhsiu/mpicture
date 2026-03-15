@@ -52,7 +52,7 @@ export const showToast = (message, type = "info", duration = 3000) => {
  * 空狀態提示 HTML（首頁說明文字）
  */
 export const EMPTY_STATE_HTML = `
-    <h2 class="disclaimer-primary"">🔞 免責聲明 🔞</h2>
+    <h2 class="disclaimer-primary"">免責聲明</h2>
     <p >本網頁為個人開發之輔助工具，僅供參考使用，嚴禁不法利用 !<br>
         使用者利用此網頁所產生之文件，開發者不負任何法律責任。<br> 
     </p>
