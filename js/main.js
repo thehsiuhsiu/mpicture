@@ -1,4 +1,4 @@
-// main.js - 主入口模組
+﻿// main.js - 主入口模組
 
 import { state } from "./state.js";
 import {
@@ -8,15 +8,13 @@ import {
   updateCreateButtonState,
   handleImageClick,
   rotateImage,
-  cancelEditing,
+  processFiles,
 } from "./imageHandler.js";
 import { handleGenerateWrapper } from "./docxGenerator.js";
 import { handleGeneratePDF } from "./pdfGenerator.js";
-import { EMPTY_STATE_HTML, showToast } from "./utils.js";
+import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
+import { initGooglePhotosImport } from "./googlePhotos.js";
 
-/**
- * 初始化空狀態提示
- */
 const initEmptyState = () => {
   const imagePreview = document.getElementById("imagePreview");
   if (imagePreview && state.selectedImages.length === 0) {
@@ -27,9 +25,6 @@ const initEmptyState = () => {
   }
 };
 
-/**
- * 更新 toggle switch 狀態
- */
 const updateToggleState = (value) => {
   const toggleContainer = document.querySelector(".toggle-container");
   toggleContainer.setAttribute("data-state", value);
@@ -43,7 +38,6 @@ const updateToggleState = (value) => {
     );
   });
 
-  // 更新 body 的格式 class，用於控制勾選框顯示
   document.body.classList.remove(
     "format-left",
     "format-middle",
@@ -51,15 +45,10 @@ const updateToggleState = (value) => {
   );
   document.body.classList.add(`format-${value}`);
 
-  // 更新側邊欄欄位顯示
   updateSidebarFields(value);
 };
 
-/**
- * 根據選擇的格式更新側邊欄欄位顯示
- */
 const updateSidebarFields = (format) => {
-  // 獲取所有帶有 data-format 屬性的欄位
   const allFields = document.querySelectorAll(".sidebar [data-format]");
 
   allFields.forEach((field) => {
@@ -71,7 +60,6 @@ const updateSidebarFields = (format) => {
     }
   });
 
-  // 更新標籤文字為攝影相關
   const dateLabelText = document.getElementById("dateLabelText");
   const addressLabelText = document.getElementById("addressLabelText");
   const personLabelText = document.getElementById("personLabelText");
@@ -81,14 +69,10 @@ const updateSidebarFields = (format) => {
   if (personLabelText) personLabelText.textContent = "攝影人員";
 };
 
-/**
- * 初始化文件內容標題輸入框
- */
 const initDocumentTitles = () => {
   const docTitleLeft = document.getElementById("docTitleLeft");
   const docTitleMiddle = document.getElementById("docTitleMiddle");
 
-  // 監聽左側標題變化
   if (docTitleLeft) {
     docTitleLeft.addEventListener("input", (e) => {
       const newTitle = e.target.value.trim() || "刑案照片黏貼表";
@@ -96,7 +80,6 @@ const initDocumentTitles = () => {
     });
   }
 
-  // 監聽右側標題變化
   if (docTitleMiddle) {
     docTitleMiddle.addEventListener("input", (e) => {
       const newTitle = e.target.value.trim() || "非道路交通事故照片黏貼紀錄表";
@@ -105,9 +88,6 @@ const initDocumentTitles = () => {
   }
 };
 
-/**
- * 主要初始化函數
- */
 const init = () => {
   if (state.isInitialized) return;
   state.isInitialized = true;
@@ -123,12 +103,10 @@ const init = () => {
     return;
   }
 
-  // 初始化文件內容標題
   initDocumentTitles();
 
   elements.imageInput.addEventListener("change", handleImageSelection);
 
-  // 下載按鈕下拉選單功能
   const downloadMenu = document.getElementById("downloadMenu");
   const downloadDocx = document.getElementById("downloadDocx");
   const downloadPdf = document.getElementById("downloadPdf");
@@ -139,7 +117,7 @@ const init = () => {
     if (state.selectedImages.length > 0) {
       downloadMenu.classList.toggle("show");
     } else {
-      showToast("尚未新增照片可建立文件", "error");
+      showToast("尚未新增照片可建立文件😵", "error");
     }
   });
 
@@ -155,10 +133,9 @@ const init = () => {
     handleGeneratePDF();
   });
 
-  downloadZip.addEventListener("click", (e) => {
+  downloadZip.addEventListener("click", async (e) => {
     e.stopPropagation();
     downloadMenu.classList.remove("show");
-    // Trigger zip download
     if (!state.selectedImages.length) {
       showToast(
         "打包照片的紙箱準備好了…但沒有看到照片，只看到小貓在裡面睡了一整個下午💤",
@@ -167,7 +144,6 @@ const init = () => {
       return;
     }
 
-    // 顯示「照片打包中」modal
     document.getElementById("zippingModal").style.display = "block";
 
     setTimeout(async () => {
@@ -179,28 +155,27 @@ const init = () => {
           const img = state.selectedImages[i];
           const ext = img.name.split(".").pop();
           const newName = `${prefix}照片黏貼表-編號${i + 1}.${ext}`;
-          const data = img.data.split(",")[1];
-          zip.file(newName, data, { base64: true });
+          zip.file(newName, img.blob);
         }
         const content = await zip.generateAsync({ type: "blob" });
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(content);
+        const downloadUrl = createObjectUrl(content);
+        a.href = downloadUrl;
         a.download = `${prefix}照片打包下載.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
       } finally {
         document.getElementById("zippingModal").style.display = "none";
       }
     }, 0);
   });
 
-  // 點擊其他地方關閉選單
   document.addEventListener("click", () => {
     downloadMenu.classList.remove("show");
   });
 
-  // Toggle switch 事件監聽
   const toggleContainer = document.querySelector(".toggle-container");
   const labels = toggleContainer.querySelectorAll(".label");
 
@@ -214,7 +189,6 @@ const init = () => {
   updateToggleState(state.selectedFormat);
   updateCreateButtonState();
 
-  // List/Grid View Switch 事件監聽
   const gridViewBtn = document.getElementById("gridViewBtn");
   const listViewBtn = document.getElementById("listViewBtn");
   if (gridViewBtn && listViewBtn) {
@@ -225,9 +199,6 @@ const init = () => {
   console.log("圖片管理腳本初始化完成");
 };
 
-/**
- * 設置圖片預覽區拖曳事件
- */
 const setupEventListeners = () => {
   const imagePreview = document.getElementById("imagePreview");
   [
@@ -241,21 +212,16 @@ const setupEventListeners = () => {
     imagePreview.addEventListener(eventName, handleImageContainerEvents);
   });
 
-  // 圖片點擊事件（進入編輯模式）
   imagePreview.addEventListener("click", handleImageClick);
 
-  // 全局錯誤處理
   window.addEventListener("error", (event) => {
     console.error("Uncaught error:", event.error);
     alert(
-      "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請不要聯繫支持團隊。",
+      "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請聯繫維護者。",
     );
   });
 };
 
-/**
- * 設置編輯工具按鈕
- */
 const setupEditTools = () => {
   const rotateLeftBtn = document.getElementById("rotateLeftBtn");
   const rotateRightBtn = document.getElementById("rotateRightBtn");
@@ -273,9 +239,6 @@ const setupEditTools = () => {
   }
 };
 
-/**
- * 設置照片大小滑桿
- */
 const setupPhotoSizeSlider = () => {
   const slider = document.getElementById("photoSizeSlider");
   const sizeDecBtn = document.getElementById("sizeDecBtn");
@@ -291,7 +254,6 @@ const setupPhotoSizeSlider = () => {
 
   slider.addEventListener("input", updateImageSizes);
 
-  // - 按鈕：縮小
   sizeDecBtn.addEventListener("click", () => {
     const newValue = Math.max(
       parseInt(slider.min),
@@ -301,7 +263,6 @@ const setupPhotoSizeSlider = () => {
     updateImageSizes();
   });
 
-  // + 按鈕：放大
   sizeIncBtn.addEventListener("click", () => {
     const newValue = Math.min(
       parseInt(slider.max),
@@ -312,9 +273,6 @@ const setupPhotoSizeSlider = () => {
   });
 };
 
-/**
- * 阻止 sidebar 輸入欄位的拖放事件
- */
 const setupSidebarInputs = () => {
   const sidebarInputs = document.querySelectorAll(".sidebar-input");
   sidebarInputs.forEach((input) => {
@@ -328,9 +286,6 @@ const setupSidebarInputs = () => {
   });
 };
 
-/**
- * 設置日期模式切換
- */
 const setupDateModeSwitch = () => {
   const dateSwitch = document.getElementById("dateModeSwitch");
   const dateInput = document.getElementById("caseDate");
@@ -338,6 +293,7 @@ const setupDateModeSwitch = () => {
 
   function setDateInputMode() {
     if (dateSwitch.checked) {
+      dateInput.disabled = true;
       dateModeLabel.textContent = "Auto-fill EXIF";
       dateModeLabel.classList.remove("disabled");
     } else {
@@ -351,9 +307,6 @@ const setupDateModeSwitch = () => {
   setDateInputMode();
 };
 
-/**
- * 設置離開網頁提醒
- */
 const setupBeforeUnload = () => {
   window.onbeforeunload = function (e) {
     const hasInput =
@@ -372,9 +325,6 @@ const setupBeforeUnload = () => {
   };
 };
 
-/**
- * 設置視窗大小警告
- */
 const setupResizeWarning = () => {
   const resizeWarningModal = document.getElementById("resize-warning");
 
@@ -392,12 +342,9 @@ const setupResizeWarning = () => {
   };
 
   window.addEventListener("resize", checkWindowSize);
-  checkWindowSize(); // Initial check
+  checkWindowSize();
 };
 
-/**
- * 設置手機版 Sidebar 可展開/收合
- */
 const setupMobileSidebar = () => {
   const sidebar = document.querySelector(".sidebar");
   if (!sidebar) return;
@@ -405,20 +352,16 @@ const setupMobileSidebar = () => {
   let touchStartY = 0;
   let touchEndY = 0;
 
-  // 點擊切換展開狀態
   sidebar.addEventListener("click", (e) => {
-    // 只在收合狀態時，點擊頂部區域才展開
     if (!sidebar.classList.contains("expanded")) {
       const rect = sidebar.getBoundingClientRect();
       const clickY = e.clientY - rect.top;
-      // 點擊頂部 50px 區域才展開
       if (clickY < 50) {
         sidebar.classList.add("expanded");
       }
     }
   });
 
-  // 處理 input 聚焦時展開 sidebar
   const inputs = sidebar.querySelectorAll("input");
   inputs.forEach((input) => {
     input.addEventListener("focus", () => {
@@ -426,7 +369,6 @@ const setupMobileSidebar = () => {
     });
   });
 
-  // 觸控滑動手勢
   sidebar.addEventListener(
     "touchstart",
     (e) => {
@@ -446,18 +388,15 @@ const setupMobileSidebar = () => {
 
   const handleSwipeGesture = () => {
     const swipeDistance = touchStartY - touchEndY;
-    const threshold = 50; // 最小滑動距離
+    const threshold = 50;
 
     if (swipeDistance > threshold) {
-      // 向上滑動，展開
       sidebar.classList.add("expanded");
     } else if (swipeDistance < -threshold) {
-      // 向下滑動，收合
       sidebar.classList.remove("expanded");
     }
   };
 
-  // 點擊 sidebar 外部時收合
   document.addEventListener("click", (e) => {
     if (window.innerWidth <= 768) {
       if (
@@ -469,7 +408,6 @@ const setupMobileSidebar = () => {
     }
   });
 
-  // 視窗大小改變時重置狀態
   window.addEventListener("resize", () => {
     if (window.innerWidth > 768) {
       sidebar.classList.remove("expanded");
@@ -477,18 +415,13 @@ const setupMobileSidebar = () => {
   });
 };
 
-// ============ DOM 載入後初始化 ============
-
 document.addEventListener("DOMContentLoaded", () => {
-  // FAB 按鈕點擊
   document.getElementById("fabAddPhoto").addEventListener("click", function () {
     document.getElementById("imageInput").click();
   });
 
-  // 初始化空狀態提示
   initEmptyState();
 
-  // 主要初始化
   init();
   setupEventListeners();
   setupPhotoSizeSlider();
@@ -496,14 +429,12 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDateModeSwitch();
   setupBeforeUnload();
   setupResizeWarning();
-  setupMobileSidebar(); // 手機版 Sidebar 功能
-  setupEditTools(); // 編輯工具按鈕
-  setupThemeToggle(); // 主題切換按鈕
+  setupMobileSidebar();
+  setupEditTools();
+  setupThemeToggle();
+  initGooglePhotosImport(processFiles);
 });
 
-/**
- * 設置主題切換功能
- */
 const setupThemeToggle = () => {
   const themeToggleBtn = document.getElementById("themeToggleBtn");
   const themeMenu = document.getElementById("themeMenu");
@@ -513,14 +444,6 @@ const setupThemeToggle = () => {
 
   const html = document.documentElement;
 
-  // 主題標籤對應
-  const themeLabels = {
-    light: "淺色模式",
-    dark: "深色模式",
-    system: "依系統設置",
-  };
-
-  // 根據系統偏好取得實際主題
   const getSystemTheme = () => {
     return window.matchMedia &&
       window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -528,26 +451,21 @@ const setupThemeToggle = () => {
       : "light";
   };
 
-  // 套用主題
   const applyTheme = (mode) => {
     html.setAttribute("data-theme-mode", mode);
-    // 設定實際的主題色
     if (mode === "system") {
       html.setAttribute("data-theme", getSystemTheme());
     } else {
       html.setAttribute("data-theme", mode);
     }
-    // 更新選項的 active 狀態
     themeMenu.querySelectorAll(".theme-option").forEach((opt) => {
       opt.classList.toggle("active", opt.dataset.theme === mode);
     });
   };
 
-  // 初始化：檢查 localStorage，預設為 system
   const savedMode = localStorage.getItem("themeMode") || "system";
   applyTheme(savedMode);
 
-  // 監聽系統主題變化
   if (window.matchMedia) {
     window
       .matchMedia("(prefers-color-scheme: dark)")
@@ -559,13 +477,11 @@ const setupThemeToggle = () => {
       });
   }
 
-  // 點擊切換按鈕展開/收起選單
   themeToggleBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     themeSelector?.classList.toggle("open");
   });
 
-  // 點擊選項
   themeMenu.querySelectorAll(".theme-option").forEach((option) => {
     option.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -576,9 +492,7 @@ const setupThemeToggle = () => {
     });
   });
 
-  // 點擊外部關閉選單
   document.addEventListener("click", () => {
     themeSelector?.classList.remove("open");
   });
 };
-

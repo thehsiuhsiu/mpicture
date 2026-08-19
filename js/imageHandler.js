@@ -1,4 +1,4 @@
-// imageHandler.js - 圖片處理模組
+﻿// imageHandler.js - 圖片處理模組
 
 import { state, ACCIDENT_TAG_OPTIONS } from "./state.js";
 import {
@@ -9,7 +9,42 @@ import {
   showConversionModal,
   hideConversionModal,
   EMPTY_STATE_HTML,
+  createObjectUrl,
+  revokeObjectUrl,
 } from "./utils.js";
+
+const getImageDimensions = (sourceUrl) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.width, height: img.height });
+    };
+    img.onerror = reject;
+    img.src = sourceUrl;
+  });
+};
+
+const buildImageRecord = async (blob, fileName, date = "") => {
+  const sourceUrl = createObjectUrl(blob);
+
+  try {
+    const { width, height } = await getImageDimensions(sourceUrl);
+    const thumbnailUrl = await createThumbnail(sourceUrl);
+
+    return {
+      id: Date.now() + Math.random(),
+      blob,
+      previewUrl: thumbnailUrl,
+      name: fileName,
+      size: blob.size,
+      width,
+      height,
+      date,
+    };
+  } finally {
+    revokeObjectUrl(sourceUrl);
+  }
+};
 
 /**
  * 處理圖片選擇事件
@@ -24,7 +59,7 @@ export const handleImageSelection = (event) => {
 /**
  * 處理檔案陣列
  */
-const processFiles = (files) => {
+export const processFiles = (files) => {
   console.log("Processing files:", files.length);
   const promises = files.map(
     (file) =>
@@ -35,62 +70,52 @@ const processFiles = (files) => {
           file.name.toLowerCase().endsWith(".heic") ||
           file.name.toLowerCase().endsWith(".heif");
 
-        // 處理圖片並解析 EXIF (可傳入預先讀取的 EXIF 日期)
-        const processImage = (blob, fileName, preExtractedDate = null) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const dataUrl = e.target.result;
-            const img = new Image();
-            img.onload = () => {
-              // 如果有預先提取的日期（來自 HEIC），直接使用
-              if (preExtractedDate !== null) {
-                createThumbnail(dataUrl)
-                  .then((thumbnailUrl) => {
-                    resolve({
-                      id: Date.now() + Math.random(),
-                      data: dataUrl,
-                      thumbnail: thumbnailUrl,
-                      name: fileName,
-                      size: blob.size,
-                      width: img.width,
-                      height: img.height,
-                      date: preExtractedDate,
-                    });
-                  })
-                  .catch(reject);
-              } else {
-                // 一般圖片：從轉換後的圖片讀取 EXIF
-                EXIF.getData(img, function () {
-                  const exifDate = EXIF.getTag(this, "DateTimeOriginal");
-                  const formattedDate = formatExifDate(exifDate);
-                  createThumbnail(dataUrl)
-                    .then((thumbnailUrl) => {
-                      resolve({
-                        id: Date.now() + Math.random(),
-                        data: dataUrl,
-                        thumbnail: thumbnailUrl,
-                        name: fileName,
-                        size: blob.size,
-                        width: img.width,
-                        height: img.height,
-                        date: formattedDate,
-                      });
-                    })
-                    .catch(reject);
+        const processImage = async (
+          blob,
+          fileName,
+          preExtractedDate = null,
+        ) => {
+          try {
+            if (preExtractedDate !== null) {
+              resolve(await buildImageRecord(blob, fileName, preExtractedDate));
+              return;
+            }
+
+            const tempUrl = createObjectUrl(blob);
+            try {
+              const img = new Image();
+              img.onload = async () => {
+                EXIF.getData(img, async function () {
+                  try {
+                    const exifDate = EXIF.getTag(this, "DateTimeOriginal");
+                    const formattedDate = formatExifDate(exifDate);
+                    resolve(
+                      await buildImageRecord(blob, fileName, formattedDate),
+                    );
+                  } catch (error) {
+                    reject(error);
+                  } finally {
+                    revokeObjectUrl(tempUrl);
+                  }
                 });
-              }
-            };
-            img.onerror = reject;
-            img.src = dataUrl;
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
+              };
+              img.onerror = (error) => {
+                revokeObjectUrl(tempUrl);
+                reject(error);
+              };
+              img.src = tempUrl;
+            } catch (error) {
+              revokeObjectUrl(tempUrl);
+              reject(error);
+            }
+          } catch (error) {
+            reject(error);
+          }
         };
 
         if (isHEIC) {
           showConversionModal();
 
-          // 使用 exifr 從原始 HEIC 檔案讀取 EXIF 日期
           exifr
             .parse(file, {
               pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"],
@@ -98,30 +123,26 @@ const processFiles = (files) => {
             .then((exifData) => {
               let heicExifDate = null;
               if (exifData) {
-                // 優先使用 DateTimeOriginal，其次 CreateDate
                 const dateValue =
                   exifData.DateTimeOriginal ||
                   exifData.CreateDate ||
                   exifData.ModifyDate;
                 if (dateValue) {
-                  // exifr 回傳的是 Date 物件，轉換成我們需要的格式
                   heicExifDate = formatExifDate(dateValue);
                   console.log("HEIC EXIF 日期讀取成功:", heicExifDate);
                 }
               }
 
-              // 轉換 HEIC 為 JPEG
               return heic2any({
                 blob: file,
                 toType: "image/jpeg",
                 quality: 0.8,
               }).then((convertedBlob) => {
                 hideConversionModal();
-                // 傳入預先讀取的 EXIF 日期
                 processImage(
                   convertedBlob,
                   file.name.replace(/\.(heic|heif)$/i, ".jpg"),
-                  heicExifDate
+                  heicExifDate,
                 );
               });
             })
@@ -129,14 +150,14 @@ const processFiles = (files) => {
               hideConversionModal();
               console.error("HEIC conversion failed:", error);
               alert(
-                `HEIC 檔案 "${file.name}" 轉換失敗，請嘗試其他格式的圖片。`
+                `HEIC 檔案 "${file.name}" 轉換失敗，請嘗試其他格式的圖片。`,
               );
               reject(error);
             });
         } else {
           processImage(file, file.name);
         }
-      })
+      }),
   );
 
   Promise.all(promises)
@@ -166,6 +187,7 @@ const handleImageAddition = (imageData) => {
     if (confirm(`檔案 "${imageData.name}" 已經存在。是否重複新增？`)) {
       addImageToCollection(imageData);
     } else {
+      revokeObjectUrl(imageData.previewUrl);
       console.log("User chose not to add duplicate image");
     }
   } else {
@@ -182,7 +204,7 @@ const isDuplicateImage = (newImage) => {
       img.name === newImage.name &&
       img.size === newImage.size &&
       img.width === newImage.width &&
-      img.height === newImage.height
+      img.height === newImage.height,
   );
 };
 
@@ -213,23 +235,20 @@ const addImageToPreview = (imageData, counter) => {
   imageContainer.appendChild(counterElement);
 
   const img = document.createElement("img");
-  img.src = imageData.thumbnail;
+  img.src = imageData.previewUrl;
   img.alt = imageData.name;
-  img.title = imageData.name; // 滑鼠懸停時顯示檔名
+  img.title = imageData.name;
   imageContainer.appendChild(img);
 
-  // 讓新照片套用目前滑桿大小
   const slider = document.getElementById("photoSizeSlider");
   if (slider) {
     img.style.maxWidth = slider.value + "px";
     img.style.maxHeight = slider.value + "px";
   }
 
-  // 新增說明文字區
   const descriptionDiv = document.createElement("div");
   descriptionDiv.className = "image-description";
 
-  // 日期輸入欄位
   const dateInput = document.createElement("input");
   dateInput.type = "text";
   dateInput.className = "image-date-input";
@@ -245,7 +264,6 @@ const addImageToPreview = (imageData, counter) => {
   });
   descriptionDiv.appendChild(dateInput);
 
-  // 地址輸入欄位
   const addressInput = document.createElement("input");
   addressInput.type = "text";
   addressInput.className = "image-address-input";
@@ -261,7 +279,6 @@ const addImageToPreview = (imageData, counter) => {
   });
   descriptionDiv.appendChild(addressInput);
 
-  // 說明輸入欄位 (僅限刑事案件)
   const textarea = document.createElement("textarea");
   textarea.className = "image-description-textarea";
   textarea.placeholder = "說明 (選填)";
@@ -278,12 +295,10 @@ const addImageToPreview = (imageData, counter) => {
   });
   descriptionDiv.appendChild(textarea);
 
-  // 交通事故勾選框 UI
   const accidentTagsContainer = document.createElement("div");
   accidentTagsContainer.className = "accident-tags-container";
   accidentTagsContainer.dataset.format = "middle";
 
-  // 初始化勾選狀態
   if (!state.imageAccidentTags[imageData.id]) {
     state.imageAccidentTags[imageData.id] = {};
   }
@@ -304,14 +319,12 @@ const addImageToPreview = (imageData, counter) => {
     labelText.textContent = option.label;
     tagLabel.appendChild(labelText);
 
-    // 如果是"其他"選項，添加文字輸入框
     if (option.id === "other") {
       const otherInput = document.createElement("input");
       otherInput.type = "text";
       otherInput.className = "accident-tag-other-input";
       otherInput.placeholder = "________________";
       otherInput.value = state.imageAccidentTags[imageData.id].otherText || "";
-      // 根據勾選狀態設定是否可輸入
       otherInput.disabled = !checkbox.checked;
       otherInput.addEventListener("input", (e) => {
         state.imageAccidentTags[imageData.id].otherText = e.target.value;
@@ -323,7 +336,6 @@ const addImageToPreview = (imageData, counter) => {
       });
       tagLabel.appendChild(otherInput);
 
-      // 勾選時啟用輸入框，取消勾選時禁用
       checkbox.addEventListener("change", (e) => {
         state.imageAccidentTags[imageData.id][option.id] = e.target.checked;
         otherInput.disabled = !e.target.checked;
@@ -353,9 +365,6 @@ const addImageToPreview = (imageData, counter) => {
   console.log("Image preview added:", imageData.name);
 };
 
-/**
- * 處理檢視模式切換
- */
 export const handleViewModeChange = (mode) => {
   state.viewMode = mode;
   const preview = document.getElementById("imagePreview");
@@ -370,7 +379,6 @@ export const handleViewModeChange = (mode) => {
     preview.classList.remove("list-view");
     gridViewBtn.classList.add("active");
     listViewBtn.classList.remove("active");
-    // 切換回 grid 時重新套用滑桿大小
     const slider = document.getElementById("photoSizeSlider");
     if (slider) {
       const imgs = preview.querySelectorAll(".image-container img");
@@ -383,21 +391,15 @@ export const handleViewModeChange = (mode) => {
   console.log("View mode changed to:", state.viewMode);
 };
 
-/**
- * 處理圖片容器拖曳事件
- */
 export const handleImageContainerEvents = (e) => {
-  // 確保 e.target 是有效的 Element
   if (!e.target || !(e.target instanceof Element)) {
     return;
   }
-  // 忽略來自 textarea 的拖曳事件
   if (e.target.tagName === "TEXTAREA") return;
 
   const container = e.target.closest(".image-container");
   if (!container) return;
 
-  // 如果圖片處於編輯模式，不允許拖曳
   if (container.classList.contains("editing")) {
     e.preventDefault();
     return;
@@ -407,7 +409,6 @@ export const handleImageContainerEvents = (e) => {
 
   switch (e.type) {
     case "dragstart":
-      // 如果任何圖片正在編輯中，阻止拖曳
       if (state.editingImageId) {
         e.preventDefault();
         return;
@@ -435,17 +436,14 @@ export const handleImageContainerEvents = (e) => {
   }
 };
 
-/**
- * 處理圖片拖放
- */
 const handleImageDrop = (draggedId, dropZone) => {
   const draggedElement = document.querySelector(
-    `.image-container[data-id="${draggedId}"]`
+    `.image-container[data-id="${draggedId}"]`,
   );
   if (draggedElement && dropZone && draggedElement !== dropZone) {
     const preview = document.getElementById("imagePreview");
     const allContainers = Array.from(
-      preview.querySelectorAll(".image-container")
+      preview.querySelectorAll(".image-container"),
     );
     const draggedIndex = allContainers.indexOf(draggedElement);
     const dropIndex = allContainers.indexOf(dropZone);
@@ -463,9 +461,6 @@ const handleImageDrop = (draggedId, dropZone) => {
   }
 };
 
-/**
- * 更新圖片順序
- */
 const updateImageOrder = () => {
   const preview = document.getElementById("imagePreview");
   const containers = Array.from(preview.querySelectorAll(".image-container"));
@@ -481,16 +476,13 @@ const updateImageOrder = () => {
 
   console.log(
     "Image order updated. New order:",
-    state.selectedImages.map((img) => img.name)
+    state.selectedImages.map((img) => img.name),
   );
   console.log("Total images after reorder:", state.selectedImages.length);
 
   updateCreateButtonState();
 };
 
-/**
- * 更新編輯工具按鈕狀態
- */
 const updateEditToolsState = (enabled) => {
   const rotateLeftBtn = document.getElementById("rotateLeftBtn");
   const rotateRightBtn = document.getElementById("rotateRightBtn");
@@ -499,16 +491,11 @@ const updateEditToolsState = (enabled) => {
   if (rotateRightBtn) rotateRightBtn.disabled = !enabled;
 };
 
-/**
- * 顯示刪除確認對話框
- */
 const showDeleteConfirmDialog = (id, imageName) => {
   return new Promise((resolve) => {
-    // 建立遮罩層
     const overlay = document.createElement("div");
     overlay.className = "delete-confirm-overlay";
 
-    // 建立對話框
     const dialog = document.createElement("div");
     dialog.className = "delete-confirm-dialog";
 
@@ -527,7 +514,6 @@ const showDeleteConfirmDialog = (id, imageName) => {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    // 觸發動畫
     requestAnimationFrame(() => {
       overlay.classList.add("show");
     });
@@ -540,7 +526,6 @@ const showDeleteConfirmDialog = (id, imageName) => {
       }, 200);
     };
 
-    // 綁定按鈕事件
     dialog
       .querySelector(".cancel")
       .addEventListener("click", () => closeDialog(false));
@@ -548,12 +533,10 @@ const showDeleteConfirmDialog = (id, imageName) => {
       .querySelector(".confirm")
       .addEventListener("click", () => closeDialog(true));
 
-    // 點擊遮罩關閉
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) closeDialog(false);
     });
 
-    // ESC 鍵關閉
     const handleKeydown = (e) => {
       if (e.key === "Escape") {
         document.removeEventListener("keydown", handleKeydown);
@@ -564,24 +547,18 @@ const showDeleteConfirmDialog = (id, imageName) => {
   });
 };
 
-/**
- * 移除圖片
- */
 export const removeImage = async (id) => {
   console.log("Removing image with id:", id);
 
-  // 找到圖片名稱
   const imageData = state.selectedImages.find((img) => img.id === id);
   const imageName = imageData ? imageData.name : "";
 
-  // 顯示確認對話框
   const confirmed = await showDeleteConfirmDialog(id, imageName);
   if (!confirmed) {
     console.log("Delete cancelled by user");
     return;
   }
 
-  // 如果正在編輯的圖片被刪除，取消編輯模式
   if (state.editingImageId === id) {
     state.editingImageId = null;
     updateEditToolsState(false);
@@ -594,8 +571,12 @@ export const removeImage = async (id) => {
   delete state.imageAccidentTags[id];
   delete state.imageRotations[id];
 
+  if (imageData?.previewUrl) {
+    revokeObjectUrl(imageData.previewUrl);
+  }
+
   const imageElement = document.querySelector(
-    `.image-container[data-id="${id}"]`
+    `.image-container[data-id="${id}"]`,
   );
   if (imageElement) {
     imageElement.remove();
@@ -605,15 +586,11 @@ export const removeImage = async (id) => {
   updateCreateButtonState();
   console.log("Image removed. Remaining images:", state.selectedImages.length);
 
-  // 檢查是否沒有圖片，顯示空狀態
   if (state.selectedImages.length === 0) {
     showEmptyState();
   }
 };
 
-/**
- * 顯示空狀態提示
- */
 const showEmptyState = () => {
   const imagePreview = document.getElementById("imagePreview");
   const emptyStateDiv = document.createElement("div");
@@ -623,9 +600,6 @@ const showEmptyState = () => {
   console.log("No images left, displaying empty state.");
 };
 
-/**
- * 更新圖片計數器
- */
 const updateImageCounters = () => {
   const containers = document.querySelectorAll(".image-container");
   containers.forEach((container, index) => {
@@ -638,9 +612,6 @@ const updateImageCounters = () => {
   console.log("Image counters updated. New count:", state.imageCounter);
 };
 
-/**
- * 更新建立按鈕狀態
- */
 export const updateCreateButtonState = () => {
   const createButton = document.getElementById("generate");
   if (!createButton) {
@@ -656,22 +627,17 @@ export const updateCreateButtonState = () => {
   console.log("Selected images count:", state.selectedImages.length);
 };
 
-/**
- * 設定編輯中的圖片
- */
 export const setEditingImage = (imageId) => {
-  // 移除之前編輯中的狀態
   const previousEditing = document.querySelector(".image-container.editing");
   if (previousEditing) {
     previousEditing.classList.remove("editing");
     previousEditing.draggable = true;
   }
 
-  // 設定新的編輯狀態
   if (imageId) {
     state.editingImageId = imageId;
     const container = document.querySelector(
-      `.image-container[data-id="${imageId}"]`
+      `.image-container[data-id="${imageId}"]`,
     );
     if (container) {
       container.classList.add("editing");
@@ -684,53 +650,40 @@ export const setEditingImage = (imageId) => {
   }
 };
 
-/**
- * 取消編輯模式
- */
 export const cancelEditing = () => {
   setEditingImage(null);
 };
 
-/**
- * 旋轉圖片
- * @param {number} degrees - 旋轉角度 (90 或 -90)
- */
 export const rotateImage = async (degrees) => {
   if (!state.editingImageId) return;
 
   const imageData = state.selectedImages.find(
-    (img) => img.id === state.editingImageId
+    (img) => img.id === state.editingImageId,
   );
   if (!imageData) return;
 
-  // 取得目前旋轉角度
   const currentRotation = state.imageRotations[state.editingImageId] || 0;
   const newRotation = (currentRotation + degrees + 360) % 360;
   state.imageRotations[state.editingImageId] = newRotation;
 
-  // 建立旋轉後的圖片
-  const rotatedData = await rotateImageData(imageData.data, degrees);
+  const rotatedData = await rotateImageData(imageData.blob, degrees);
 
-  // 更新圖片資料
-  imageData.data = rotatedData.data;
-  imageData.thumbnail = rotatedData.thumbnail;
+  imageData.blob = rotatedData.blob;
+  imageData.width = rotatedData.width;
+  imageData.height = rotatedData.height;
 
-  // 交換寬高（90度旋轉後寬高互換）
-  const tempWidth = imageData.width;
-  imageData.width = imageData.height;
-  imageData.height = tempWidth;
+  if (imageData.previewUrl) {
+    revokeObjectUrl(imageData.previewUrl);
+  }
+  imageData.previewUrl = rotatedData.previewUrl;
 
-  // 更新 DOM
   const container = document.querySelector(
-    `.image-container[data-id="${state.editingImageId}"]`
+    `.image-container[data-id="${state.editingImageId}"]`,
   );
   if (container) {
     const img = container.querySelector("img");
     if (img) {
-      // 使用完整數據而非縮圖，以支持無限放大
-      img.src = rotatedData.data;
-
-      // 確保旋轉後的圖片保持滑桿設定的大小
+      img.src = rotatedData.previewUrl;
       const slider = document.getElementById("photoSizeSlider");
       if (slider) {
         img.style.maxWidth = slider.value + "px";
@@ -740,69 +693,59 @@ export const rotateImage = async (degrees) => {
   }
 
   console.log(
-    `Image rotated by ${degrees} degrees. New rotation: ${newRotation}`
+    `Image rotated by ${degrees} degrees. New rotation: ${newRotation}`,
   );
 };
 
-/**
- * 旋轉圖片資料
- * @param {string} dataUrl - 圖片的 data URL
- * @param {number} degrees - 旋轉角度
- * @returns {Promise<{data: string, thumbnail: string}>} - 旋轉後的圖片資料
- */
-const rotateImageData = (dataUrl, degrees) => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      // 建立 canvas 進行旋轉
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
+const rotateImageData = async (blob, degrees) => {
+  const objectUrl = createObjectUrl(blob);
 
-      // 90度或270度時需要交換寬高
-      if (Math.abs(degrees) === 90 || Math.abs(degrees) === 270) {
-        canvas.width = img.height;
-        canvas.height = img.width;
-      } else {
-        canvas.width = img.width;
-        canvas.height = img.height;
-      }
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = objectUrl;
+    });
 
-      // 移動到中心點進行旋轉
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((degrees * Math.PI) / 180);
-      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-      // 取得旋轉後的資料
-      const rotatedDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    if (Math.abs(degrees) === 90 || Math.abs(degrees) === 270) {
+      canvas.width = img.height;
+      canvas.height = img.width;
+    } else {
+      canvas.width = img.width;
+      canvas.height = img.height;
+    }
 
-      // 建立縮圖
-      const thumbCanvas = document.createElement("canvas");
-      const thumbCtx = thumbCanvas.getContext("2d");
-      const maxThumbSize = 400;
-      const scale = Math.min(
-        maxThumbSize / canvas.width,
-        maxThumbSize / canvas.height,
-        1
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((degrees * Math.PI) / 180);
+    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+    const rotatedBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (result) =>
+          result ? resolve(result) : reject(new Error("圖片旋轉失敗")),
+        "image/jpeg",
+        0.9,
       );
-      thumbCanvas.width = canvas.width * scale;
-      thumbCanvas.height = canvas.height * scale;
-      thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
-      const thumbnailUrl = thumbCanvas.toDataURL("image/jpeg", 0.8);
+    });
 
-      resolve({
-        data: rotatedDataUrl,
-        thumbnail: thumbnailUrl,
-      });
+    const previewUrl = await createThumbnail(rotatedBlob, 800, 800, 0.8);
+
+    return {
+      blob: rotatedBlob,
+      previewUrl,
+      width: canvas.width,
+      height: canvas.height,
     };
-    img.src = dataUrl;
-  });
+  } finally {
+    revokeObjectUrl(objectUrl);
+  }
 };
 
-/**
- * 處理圖片點擊事件（進入編輯模式）
- */
 export const handleImageClick = (e) => {
-  // 忽略來自按鈕、輸入框的點擊
   if (
     e.target.tagName === "BUTTON" ||
     e.target.tagName === "INPUT" ||
@@ -818,11 +761,9 @@ export const handleImageClick = (e) => {
 
   const imageId = parseFloat(container.dataset.id);
 
-  // 如果點擊的是已經在編輯的圖片，則取消編輯
   if (state.editingImageId === imageId) {
     cancelEditing();
   } else {
     setEditingImage(imageId);
   }
 };
-

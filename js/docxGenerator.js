@@ -1,4 +1,4 @@
-// docxGenerator.js
+﻿// docxGenerator.js
 
 import { state, FORMAT_NAMES, ACCIDENT_TAG_OPTIONS } from "./state.js";
 import {
@@ -6,6 +6,7 @@ import {
   getFormattedDate,
   showLoadingModal,
   hideLoadingModal,
+  blobToArrayBuffer,
 } from "./utils.js";
 
 export const handleGenerateWrapper = async (event) => {
@@ -39,10 +40,11 @@ const handleGenerate = async () => {
   try {
     const resizedImages = await Promise.all(
       state.selectedImages.map(async (image) => {
-        const resizedData = await resizeImageForDoc(image.data);
+        const resizedBlob = await resizeImageForDoc(image.blob);
         return {
           ...image,
-          data: resizedData,
+          docBlob: resizedBlob,
+          docData: await blobToArrayBuffer(resizedBlob),
           description: state.imageDescriptions[image.id] || "",
           customDate: state.imageDates[image.id] || "",
           customAddress: state.imageAddresses[image.id] || "",
@@ -75,12 +77,12 @@ const handleGenerate = async () => {
     hideLoadingModal();
 
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    const downloadUrl = URL.createObjectURL(blob);
+    link.href = downloadUrl;
     const dateString = getFormattedDate();
-    link.download = `${
-      FORMAT_NAMES[state.selectedFormat]
-    }照片黏貼表_${dateString}.docx`;
+    link.download = `${FORMAT_NAMES[state.selectedFormat]}照片黏貼表_${dateString}.docx`;
     link.click();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
   } catch (error) {
     hideLoadingModal();
     console.error("Error in document generation:", error);
@@ -88,17 +90,11 @@ const handleGenerate = async () => {
   }
 };
 
-/**
- * 生成交通事故勾選說明文字
- * @param {Object} tags - 勾選狀態物件，key 為選項 id，value 為 boolean
- * @returns {string} 格式化的說明文字
- */
 const generateAccidentTagsText = (tags) => {
   const tagTexts = ACCIDENT_TAG_OPTIONS.map((option) => {
     const isChecked = tags && tags[option.id];
     const checkbox = isChecked ? "■" : "□";
     if (option.id === "other") {
-      // 僅在勾選「其他」時才顯示輸入的內容
       const otherText =
         isChecked && tags.otherText ? tags.otherText : "___________";
       return `${checkbox}其他:${otherText}`;
@@ -106,7 +102,6 @@ const generateAccidentTagsText = (tags) => {
     return `${checkbox}${option.label}`;
   });
 
-  // 每行顯示 5 個選項，使用空格分隔
   return tagTexts.join(" ");
 };
 
@@ -166,7 +161,7 @@ const createDocument = (docx, format, formData, images) => {
   ];
 
   return new docx.Document({
-    sections: sections,
+    sections,
     styles: createDocumentStyles(docx),
     compatibility: {
       doNotUseHTMLParagraphAutoSpacing: true,
@@ -174,8 +169,6 @@ const createDocument = (docx, format, formData, images) => {
     },
   });
 };
-
-// ============ 刑事案件 ============
 
 const createCriminalContent = (
   docx,
@@ -311,7 +304,7 @@ const createImageTable = (
                 new docx.Paragraph({
                   children: [
                     new docx.ImageRun({
-                      data: image.data,
+                      data: image.docData,
                       transformation: {
                         width: imageWidth,
                         height: imageHeight,
@@ -419,8 +412,6 @@ const createImageTable = (
   ];
 };
 
-// ============ 交通事故 ============
-
 const createTrafficAccidentContent = (
   docx,
   images,
@@ -493,7 +484,7 @@ const createTrafficAccidentImageTable = (
               new docx.Paragraph({
                 children: [
                   new docx.ImageRun({
-                    data: image.data,
+                    data: image.docData,
                     transformation: { width: imageWidth, height: imageHeight },
                   }),
                 ],
@@ -564,10 +555,6 @@ const createTrafficAccidentImageTable = (
     ],
   });
 };
-
-// ============ 交通違規 ============
-
-// ============ 共用 ============
 
 const createDefaultFooter = (docx) => {
   return new docx.Footer({

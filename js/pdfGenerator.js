@@ -1,13 +1,13 @@
-// pdfGenerator.js - PDF使用瀏覽器列印
+﻿// pdfGenerator.js - PDF 生成模組
 
 import { state, FORMAT_TITLES, ACCIDENT_TAG_OPTIONS } from "./state.js";
-import { showLoadingModal, hideLoadingModal } from "./utils.js";
+import {
+  showLoadingModal,
+  hideLoadingModal,
+  createObjectUrl,
+  revokeObjectUrl,
+} from "./utils.js";
 
-/**
- * 生成交通事故勾選說明文字
- * @param {Object} tags - 勾選狀態物件
- * @returns {string} 格式化的說明文字
- */
 const generateAccidentTagsText = (tags) => {
   const tagTexts = ACCIDENT_TAG_OPTIONS.map((option) => {
     const isChecked = tags && tags[option.id];
@@ -22,15 +22,15 @@ const generateAccidentTagsText = (tags) => {
   return tagTexts.join(" ");
 };
 
-/**
- * 處理 PDF 生成
- */
 export const handleGeneratePDF = async () => {
   if (state.selectedImages.length === 0) {
     alert("請選擇至少一張圖片。");
     return;
   }
   showLoadingModal();
+
+  let printWindow;
+  const printUrls = [];
 
   try {
     const isAutoDate = document.getElementById("dateModeSwitch").checked;
@@ -44,6 +44,15 @@ export const handleGeneratePDF = async () => {
       state.customDocTitles[state.selectedFormat] ||
       FORMAT_TITLES[state.selectedFormat];
 
+    const printableImages = state.selectedImages.map((image) => {
+      const printUrl = createObjectUrl(image.blob);
+      printUrls.push(printUrl);
+      return {
+        ...image,
+        printUrl,
+      };
+    });
+
     let printContent = buildPrintHTML(title);
 
     if (state.selectedFormat === "left") {
@@ -55,12 +64,14 @@ export const handleGeneratePDF = async () => {
         caseUnit,
         caseAddress,
         caseNumber,
+        printableImages,
       );
     } else if (state.selectedFormat === "middle") {
       printContent += buildTrafficAccidentContent(
         title,
         isAutoDate,
         manualDate,
+        printableImages,
       );
     }
 
@@ -68,7 +79,7 @@ export const handleGeneratePDF = async () => {
 
     hideLoadingModal();
 
-    const printWindow = window.open("", "_blank");
+    printWindow = window.open("", "_blank");
     printWindow.document.write(printContent);
     printWindow.document.close();
     printWindow.focus();
@@ -78,16 +89,21 @@ export const handleGeneratePDF = async () => {
         printWindow.print();
       }, 500);
     };
+
+    const cleanup = () => {
+      printUrls.forEach(revokeObjectUrl);
+    };
+
+    printWindow.addEventListener("afterprint", cleanup, { once: true });
+    printWindow.addEventListener("beforeunload", cleanup, { once: true });
   } catch (error) {
+    printUrls.forEach(revokeObjectUrl);
     hideLoadingModal();
     console.error("Error in PDF generation:", error);
     alert("PDF 生成過程中出錯，請查看控制台以獲取詳細信息。");
   }
 };
 
-/**
- * 建立列印用 HTML 基礎結構
- */
 const buildPrintHTML = (title) => {
   return `
         <!DOCTYPE html>
@@ -96,8 +112,8 @@ const buildPrintHTML = (title) => {
             <meta charset="UTF-8">
             <title>${title}</title>
             <style>
-                @page { 
-                    size: A4; 
+                @page {
+                    size: A4;
                     margin: 12mm 20mm 1mm 20mm;
                 }
                 * {
@@ -105,12 +121,12 @@ const buildPrintHTML = (title) => {
                     padding: 0;
                     box-sizing: border-box;
                 }
-                body { 
-                    font-family: "DFKai-SB", "標楷體", "KaiTi", serif; 
+                body {
+                    font-family: "DFKai-SB", "標楷體", "KaiTi", serif;
                     font-size: 11.5pt;
                     line-height: 1.2;
                 }
-                h1 { 
+                h1 {
                     text-align: justify;
                     text-align-last: justify;
                     letter-spacing: 0;
@@ -119,36 +135,36 @@ const buildPrintHTML = (title) => {
                     margin-bottom: 0.5em;
                     padding: 0;
                 }
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
                     table-layout: fixed;
-                    border: 1px solid #000; 
+                    border: 1px solid #000;
                 }
-                td, th { 
-                    border: 1px solid #000; 
+                td, th {
+                    border: 1px solid #000;
                     padding: 4px 6px;
                     vertical-align: middle;
                     word-wrap: break-word;
                 }
-                .photo-cell { 
-                    text-align: center; 
+                .photo-cell {
+                    text-align: center;
                     height: 100mm;
                     vertical-align: middle;
                     padding: 1px;
                 }
-                .photo-cell img { 
-                    max-width: 100%; 
+                .photo-cell img {
+                    max-width: 100%;
                     max-height: 97mm;
                     object-fit: contain;
                 }
-                .label-cell { 
+                .label-cell {
                     text-align: center;
                     text-align: justify;
                     text-align-last: justify;
                     width: 15%;
                 }
-                .value-cell { 
+                .value-cell {
                     text-align: left;
                 }
                 .page-container {
@@ -161,18 +177,18 @@ const buildPrintHTML = (title) => {
                 .footer {
                     text-align: center;
                     font-size: 10pt;
-                    margin-top: 10px; 
+                    margin-top: 10px;
                 }
                 .spacer {
                     height: 3px;
                 }
-                    .empty-cell {
-    border: none !important;
-    background: transparent !important;
-}
-                @media print { 
-                    .page-container { 
-                        page-break-after: always; 
+                .empty-cell {
+                    border: none !important;
+                    background: transparent !important;
+                }
+                @media print {
+                    .page-container {
+                        page-break-after: always;
                         page-break-inside: avoid;
                     }
                     .page-container:last-child {
@@ -185,9 +201,6 @@ const buildPrintHTML = (title) => {
     `;
 };
 
-/**
- * 建立刑事案件格式內容
- */
 const buildCriminalContent = (
   title,
   isAutoDate,
@@ -196,15 +209,16 @@ const buildCriminalContent = (
   caseUnit,
   caseAddress,
   caseNumber,
+  images,
 ) => {
   let content = "";
-  const totalPages = Math.ceil(state.selectedImages.length / 2);
+  const totalPages = Math.ceil(images.length / 2);
 
   for (let page = 0; page < totalPages; page++) {
     const startIdx = page * 2;
     content += `<div class="page-container">`;
     content += `<h1>${title}</h1>`;
-    const img1 = state.selectedImages[startIdx];
+    const img1 = images[startIdx];
     const customDate1 = state.imageDates[img1.id] || "";
     const date1 =
       customDate1 || (isAutoDate ? img1.date || manualDate : manualDate);
@@ -218,9 +232,7 @@ const buildCriminalContent = (
                     <td class="label-cell" style="width:16.5%;">單位</td>
                     <td class="value-cell" style="width:34.5%; text-align:center;" colspan="2">${caseUnit}</td>
                 </tr>
-                <tr><td class="photo-cell" colspan="6"><img src="${
-                  img1.data
-                }"></td></tr>
+                <tr><td class="photo-cell" colspan="6"><img src="${img1.printUrl}"></td></tr>
                 <tr>
                     <td class="label-cell">編號(${startIdx + 1})</td>
                     <td class="label-cell">照片日期</td>
@@ -239,8 +251,8 @@ const buildCriminalContent = (
             </table>
         `;
 
-    if (startIdx + 1 < state.selectedImages.length) {
-      const img2 = state.selectedImages[startIdx + 1];
+    if (startIdx + 1 < images.length) {
+      const img2 = images[startIdx + 1];
       const customDate2 = state.imageDates[img2.id] || "";
       const date2 =
         customDate2 || (isAutoDate ? img2.date || manualDate : manualDate);
@@ -249,14 +261,9 @@ const buildCriminalContent = (
       content += `
                 <div style="height: 10px;"></div>
                 <table>
-                
-                    <tr><td class="photo-cell" colspan="6"><img src="${
-                      img2.data
-                    }"></td></tr>
+                    <tr><td class="photo-cell" colspan="6"><img src="${img2.printUrl}"></td></tr>
                     <tr>
-                        <td class="label-cell" style="width:15%;">編號(${
-                          startIdx + 2
-                        })</td>
+                        <td class="label-cell" style="width:15%;">編號(${startIdx + 2})</td>
                         <td class="label-cell" style="width:15%;">照片日期</td>
                         <td class="value-cell" style="width:35%;" colspan="2">${date2}</td>
                         <td class="label-cell" style="width:15%;">攝影人</td>
@@ -279,19 +286,16 @@ const buildCriminalContent = (
   return content;
 };
 
-/**
- * 建立交通事故格式內容
- */
-const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
+const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
   let content = "";
-  const totalPages = Math.ceil(state.selectedImages.length / 2);
+  const totalPages = Math.ceil(images.length / 2);
 
   for (let page = 0; page < totalPages; page++) {
     const startIdx = page * 2;
     content += `<div class="page-container">`;
     content += `<h1>${title}</h1>`;
 
-    const img1 = state.selectedImages[startIdx];
+    const img1 = images[startIdx];
     const customDate1 = state.imageDates[img1.id] || "";
     const date1 =
       customDate1 || (isAutoDate ? img1.date || manualDate : manualDate);
@@ -299,16 +303,12 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
     const tagsText1 = generateAccidentTagsText(tags1);
     content += `
             <table>
-                <tr><td class="photo-cell" colspan="6"><img src="${
-                  img1.data
-                }"></td></tr>
+                <tr><td class="photo-cell" colspan="6"><img src="${img1.printUrl}"></td></tr>
                 <tr>
                     <td class="label-cell" style="width:15%;">攝影日期</td>
                     <td class="value-cell" style="width:40%;" colspan="2">${date1}</td>
                     <td class="label-cell" style="width:15%;">照片編號</td>
-                    <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${
-                      startIdx + 1
-                    }</td>
+                    <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${startIdx + 1}</td>
                 </tr>
                 <tr>
                     <td class="label-cell">說明</td>
@@ -317,8 +317,8 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
             </table>
         `;
 
-    if (startIdx + 1 < state.selectedImages.length) {
-      const img2 = state.selectedImages[startIdx + 1];
+    if (startIdx + 1 < images.length) {
+      const img2 = images[startIdx + 1];
       const customDate2 = state.imageDates[img2.id] || "";
       const date2 =
         customDate2 || (isAutoDate ? img2.date || manualDate : manualDate);
@@ -326,18 +326,13 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate) => {
       const tagsText2 = generateAccidentTagsText(tags2);
       content += `
                 <div style="height: 20px;"></div>
-                
                 <table>
-                    <tr><td class="photo-cell" colspan="6"><img src="${
-                      img2.data
-                    }"></td></tr>
+                    <tr><td class="photo-cell" colspan="6"><img src="${img2.printUrl}"></td></tr>
                     <tr>
                         <td class="label-cell" style="width:15%;">攝影日期</td>
                         <td class="value-cell" style="width:40%;" colspan="2">${date2}</td>
                         <td class="label-cell" style="width:15%;">照片編號</td>
-                        <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${
-                          startIdx + 2
-                        }</td>
+                        <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${startIdx + 2}</td>
                     </tr>
                     <tr>
                         <td class="label-cell">說明</td>
