@@ -12,6 +12,12 @@ let accessToken = null;
 let tokenExpiresAt = 0;
 let pickerWindow = null;
 
+const isGooglePhotoItem = (item) => {
+  const mediaFile = item?.mediaFile;
+  const mimeType = mediaFile?.mimeType || "";
+  return item?.type === "PHOTO" && mimeType.startsWith("image/");
+};
+
 const waitForGoogleIdentity = () =>
   new Promise((resolve, reject) => {
     const startedAt = Date.now();
@@ -237,7 +243,8 @@ const importFromGooglePhotos = async (processFiles) => {
 
     showUploadingModal();
     const pickedItems = await listPickedMediaItems(session.id);
-    const photoItems = pickedItems.filter((item) => item.type === "PHOTO");
+    const photoItems = pickedItems.filter(isGooglePhotoItem);
+    const skippedCount = pickedItems.length - photoItems.length;
 
     if (!photoItems.length) {
       showToast("未選取可匯入的照片。", "warning");
@@ -249,8 +256,11 @@ const importFromGooglePhotos = async (processFiles) => {
       files.push(await downloadPickedPhoto(item));
     }
 
-    processFiles(files);
+    await processFiles(files);
     showToast(`已從 Google 相簿匯入 ${files.length} 張照片。`, "success");
+    if (skippedCount > 0) {
+      showToast(`已略過 ${skippedCount} 個非照片項目。`, "warning", 5000);
+    }
   } catch (error) {
     console.error("Google Photos import failed:", error);
     hideUploadingModal();

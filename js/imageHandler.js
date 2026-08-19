@@ -25,7 +25,9 @@ const getImageDimensions = (sourceUrl) => {
 };
 
 const normalizeFileNameForCompare = (fileName) =>
-  String(fileName || "").trim().toLowerCase();
+  String(fileName || "")
+    .trim()
+    .toLowerCase();
 
 const createDuplicateSignature = ({ name, size, width = "", height = "" }) =>
   [
@@ -35,7 +37,12 @@ const createDuplicateSignature = ({ name, size, width = "", height = "" }) =>
     Number.isFinite(height) ? height : "",
   ].join("|");
 
-const buildImageRecord = async (blob, fileName, date = "", sourceFile = null) => {
+const buildImageRecord = async (
+  blob,
+  fileName,
+  date = "",
+  sourceFile = null,
+) => {
   const sourceUrl = createObjectUrl(blob);
 
   try {
@@ -71,6 +78,15 @@ const isHeicFile = (file) => {
     file.type === "image/heif" ||
     fileName.endsWith(".heic") ||
     fileName.endsWith(".heif")
+  );
+};
+
+const isSupportedImageFile = (file) => {
+  const fileName = file.name.toLowerCase();
+  return (
+    file.type.startsWith("image/") ||
+    isHeicFile(file) ||
+    /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i.test(fileName)
   );
 };
 
@@ -192,7 +208,9 @@ const buildImageRecordWithExif = async (blob, fileName) => {
           try {
             const exifDate = EXIF.getTag(this, "DateTimeOriginal");
             const formattedDate = formatExifDate(exifDate);
-            resolve(await buildImageRecord(blob, fileName, formattedDate, blob));
+            resolve(
+              await buildImageRecord(blob, fileName, formattedDate, blob),
+            );
           } catch (error) {
             reject(error);
           } finally {
@@ -231,13 +249,19 @@ export const processFiles = async (files) => {
   console.log("Processing files:", files.length);
   const imageDataArray = [];
   const failedFiles = [];
+  const unsupportedFiles = [];
+  const supportedFiles = files.filter((file) => {
+    if (isSupportedImageFile(file)) return true;
+    unsupportedFiles.push(file.name || "未命名檔案");
+    return false;
+  });
 
   try {
-    if (files.some(isHeicFile)) {
+    if (supportedFiles.some(isHeicFile)) {
       showConversionModal();
     }
 
-    for (const file of files) {
+    for (const file of supportedFiles) {
       try {
         imageDataArray.push(await processSingleFile(file));
       } catch (error) {
@@ -256,6 +280,17 @@ export const processFiles = async (files) => {
           failedFiles.join("\n"),
           "",
           "部分 HEIC/HEIF 可能使用瀏覽器端轉換器不支援的編碼。請先用手機或電腦相簿匯出為 JPEG 後再匯入。",
+        ].join("\n"),
+      );
+    }
+
+    if (unsupportedFiles.length) {
+      alert(
+        [
+          `已略過 ${unsupportedFiles.length} 個非圖片檔案：`,
+          unsupportedFiles.join("\n"),
+          "",
+          "目前僅支援照片圖片檔，影片不會匯入。",
         ].join("\n"),
       );
     }
