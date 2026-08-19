@@ -10,6 +10,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Permissions-Policy"
+      content="camera=(), microphone=(), geolocation=(), payment=()"
+    />
     <meta
       name="theme-color"
       content="#ffffff"
@@ -37,6 +42,7 @@
       sizes="16x16"
       href="images/icons/favicon-16x16.png"
     />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@7.1.0/build/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -66,6 +72,16 @@
       <h1>M-Picture</h1>
 
       <div class="zip-controls">
+        <div class="google-controls">
+          <button type="button" id="googleAuthBtn" class="google-btn">
+            <span class="material-symbols-outlined">account_circle</span>
+            <span>Google 授權</span>
+          </button>
+          <button type="button" id="googleSignOutBtn" class="google-btn hidden">
+            <span class="material-symbols-outlined">logout</span>
+            <span>取消授權</span>
+          </button>
+        </div>
         <div class="download-dropdown">
           <button id="generate" class="create-btn create-btn-disabled">
             <span class="material-symbols-outlined">file_save</span>
@@ -262,6 +278,13 @@
     <button class="fab-add-photo" id="fabAddPhoto" title="新增照片">
       <span class="material-symbols-outlined" style="font-size: 60px">add</span>
     </button>
+    <button
+      class="fab-google-photo"
+      id="fabGooglePhoto"
+      title="從 Google 相簿匯入"
+    >
+      <span class="material-symbols-outlined">photo_library</span>
+    </button>
     <input
       type="file"
       id="imageInput"
@@ -273,7 +296,7 @@
     <script type="module" src="js/main.js"></script>
 
     <footer>
-      <h3>Copyright© 2024 thehsiuhsiu. All rights reserved.</h3>
+      <h3>🚧 Copyright© 2024 thehsiuhsiu. All rights reserved.🚧</h3>
       <p>本網頁內容由ChatGPT、Claude、Gemini及GitHub Copilot共同協作開發。</p>
       <div class="theme-selector">
         <button
