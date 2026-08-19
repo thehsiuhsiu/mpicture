@@ -85,12 +85,9 @@ const revokeAccessToken = () => {
 };
 
 const updateAuthUi = (isAuthorized) => {
-  document
-    .getElementById("googleAuthBtn")
-    ?.classList.toggle("hidden", isAuthorized);
-  document
-    .getElementById("googleSignOutBtn")
-    ?.classList.toggle("hidden", !isAuthorized);
+  document.querySelectorAll("[data-google-authorized]").forEach((element) => {
+    element.dataset.googleAuthorized = String(isAuthorized);
+  });
 };
 
 const photosFetch = async (path, options = {}) => {
@@ -269,7 +266,10 @@ const importFromGooglePhotos = async (processFiles) => {
 export const initGooglePhotosImport = (processFiles) => {
   const authButton = document.getElementById("googleAuthBtn");
   const signOutButton = document.getElementById("googleSignOutBtn");
-  const importButton = document.getElementById("fabGooglePhoto");
+  const importButton =
+    document.getElementById("googlePhotoSourceBtn") ||
+    document.getElementById("fabGooglePhoto");
+  const photoSourcePicker = document.getElementById("photoSourcePicker");
 
   authButton?.addEventListener("click", async () => {
     try {
@@ -282,7 +282,9 @@ export const initGooglePhotosImport = (processFiles) => {
 
   signOutButton?.addEventListener("click", revokeAccessToken);
 
-  importButton?.addEventListener("click", () => {
+  importButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    photoSourcePicker?.classList.remove("open");
     importFromGooglePhotos(processFiles);
   });
 };

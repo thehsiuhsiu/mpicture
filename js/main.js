@@ -25,6 +25,152 @@ const initEmptyState = () => {
   }
 };
 
+const sanitizeZipFileName = (fileName) => {
+  const cleanedName = fileName
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "");
+
+  return cleanedName || "照片";
+};
+
+const hasInvalidFileNameChars = (fileName) =>
+  /[<>:"/\\|?*\x00-\x1f]/.test(fileName);
+
+const requestZipDownloadNames = () =>
+  new Promise((resolve) => {
+    const modal = document.getElementById("zipNameModal");
+    const photoInput = document.getElementById("photoFileNameInput");
+    const photoWarning = document.getElementById("photoFileNameWarning");
+    const confirmButton = document.getElementById("zipNameConfirmBtn");
+    const cancelButton = document.getElementById("zipNameCancelBtn");
+    const cancelIcon = document.getElementById("zipNameCancelIcon");
+    const prefixInput = document.getElementById("zipPrefix");
+
+    if (
+      !modal ||
+      !photoInput ||
+      !photoWarning ||
+      !confirmButton ||
+      !cancelButton ||
+      !cancelIcon
+    ) {
+      resolve({
+        zipFileName: "照片打包下載",
+        photoFileName: "照片黏貼表",
+      });
+      return;
+    }
+
+    const defaultPhotoName = sanitizeZipFileName(
+      prefixInput?.value ? `${prefixInput.value}照片黏貼表` : "照片黏貼表",
+    );
+
+    let isResolved = false;
+    photoInput.value = defaultPhotoName;
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+    photoInput.focus();
+    photoInput.select();
+
+    const updatePhotoNameWarning = () => {
+      const shouldWarn = hasInvalidFileNameChars(photoInput.value);
+      photoInput.classList.toggle("has-warning", shouldWarn);
+      photoWarning.classList.toggle("is-visible", shouldWarn);
+    };
+
+    const cleanup = () => {
+      modal.style.display = "none";
+      modal.setAttribute("aria-hidden", "true");
+      photoInput.classList.remove("has-warning");
+      photoWarning.classList.remove("is-visible");
+      confirmButton.removeEventListener("click", handleConfirm);
+      cancelButton.removeEventListener("click", handleCancel);
+      cancelIcon.removeEventListener("click", handleCancel);
+      modal.removeEventListener("click", handleBackdropClick);
+      photoInput.removeEventListener("input", updatePhotoNameWarning);
+      photoInput.removeEventListener("keydown", handleKeydown);
+    };
+
+    const finish = (value) => {
+      if (isResolved) return;
+      isResolved = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const handleConfirm = () => {
+      updatePhotoNameWarning();
+      finish({
+        zipFileName: "照片打包",
+        photoFileName: sanitizeZipFileName(
+          photoInput.value || defaultPhotoName,
+        ),
+      });
+    };
+
+    const handleCancel = () => {
+      finish(null);
+    };
+
+    const handleBackdropClick = (event) => {
+      if (event.target === modal) {
+        handleCancel();
+      }
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleConfirm();
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCancel();
+      }
+    };
+
+    confirmButton.addEventListener("click", handleConfirm);
+    cancelButton.addEventListener("click", handleCancel);
+    cancelIcon.addEventListener("click", handleCancel);
+    modal.addEventListener("click", handleBackdropClick);
+    photoInput.addEventListener("input", updatePhotoNameWarning);
+    photoInput.addEventListener("keydown", handleKeydown);
+    updatePhotoNameWarning();
+  });
+
+const downloadImagesAsZip = async ({ zipFileName, photoFileName }) => {
+  document.getElementById("zippingModal").style.display = "block";
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  try {
+    const zip = new JSZip();
+    const prefixInput = document.getElementById("zipPrefix");
+    const prefix = prefixInput ? prefixInput.value.trim() : "";
+    for (let i = 0; i < state.selectedImages.length; i++) {
+      const img = state.selectedImages[i];
+      const ext = img.name.split(".").pop();
+      const basePhotoName = sanitizeZipFileName(photoFileName || prefix);
+      const newName = `${basePhotoName}-編號${i + 1}.${ext}`;
+      zip.file(newName, img.blob);
+    }
+    const content = await zip.generateAsync({ type: "blob" });
+    const a = document.createElement("a");
+    const downloadUrl = createObjectUrl(content);
+    a.href = downloadUrl;
+    a.download = `${sanitizeZipFileName(zipFileName)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+  } finally {
+    document.getElementById("zippingModal").style.display = "none";
+  }
+};
+
 const updateToggleState = (value) => {
   const toggleContainer = document.querySelector(".toggle-container");
   toggleContainer.setAttribute("data-state", value);
@@ -144,32 +290,10 @@ const init = () => {
       return;
     }
 
-    document.getElementById("zippingModal").style.display = "block";
+    const zipNames = await requestZipDownloadNames();
+    if (!zipNames) return;
 
-    setTimeout(async () => {
-      try {
-        const zip = new JSZip();
-        const prefixInput = document.getElementById("zipPrefix");
-        const prefix = prefixInput ? prefixInput.value.trim() : "";
-        for (let i = 0; i < state.selectedImages.length; i++) {
-          const img = state.selectedImages[i];
-          const ext = img.name.split(".").pop();
-          const newName = `${prefix}照片黏貼表-編號${i + 1}.${ext}`;
-          zip.file(newName, img.blob);
-        }
-        const content = await zip.generateAsync({ type: "blob" });
-        const a = document.createElement("a");
-        const downloadUrl = createObjectUrl(content);
-        a.href = downloadUrl;
-        a.download = `${prefix}照片打包下載.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
-      } finally {
-        document.getElementById("zippingModal").style.display = "none";
-      }
-    }, 0);
+    await downloadImagesAsZip(zipNames);
   });
 
   document.addEventListener("click", () => {
@@ -215,7 +339,19 @@ const setupEventListeners = () => {
   imagePreview.addEventListener("click", handleImageClick);
 
   window.addEventListener("error", (event) => {
-    console.error("Uncaught error:", event.error);
+    const target = event.target;
+    const isResourceError =
+      target && target !== window && target instanceof HTMLElement;
+
+    if (isResourceError) {
+      console.warn("Resource failed to load:", {
+        tagName: target.tagName,
+        source: target.getAttribute("src") || target.getAttribute("href"),
+      });
+      return;
+    }
+
+    console.error("Uncaught error:", event.error || event.message);
     alert(
       "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請聯繫維護者。",
     );
@@ -309,6 +445,8 @@ const setupDateModeSwitch = () => {
 
 const setupBeforeUnload = () => {
   window.onbeforeunload = function (e) {
+    if (window.__mpictureSuppressBeforeUnload) return;
+
     const hasInput =
       document.getElementById("zipPrefix").value.trim() ||
       document.getElementById("caseUni").value.trim() ||
@@ -343,6 +481,76 @@ const setupResizeWarning = () => {
 
   window.addEventListener("resize", checkWindowSize);
   checkWindowSize();
+};
+
+const setupModalTrigger = (triggerId, modalId, closeId) => {
+  const trigger = document.getElementById(triggerId);
+  const modal = document.getElementById(modalId);
+  const closeButton = document.getElementById(closeId);
+
+  if (!trigger || !modal || !closeButton) return;
+
+  const openModal = () => {
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+  };
+
+  const closeModal = () => {
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+  };
+
+  trigger.addEventListener("click", openModal);
+  closeButton.addEventListener("click", closeModal);
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeModal();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      modal.getAttribute("aria-hidden") === "false"
+    ) {
+      closeModal();
+    }
+  });
+};
+
+const setupInfoModals = () => {
+  setupModalTrigger("privacyPolicyBtn", "privacyModal", "privacyModalClose");
+  setupModalTrigger("faqBtn", "faqModal", "faqModalClose");
+};
+
+const setupConsentGate = () => {
+  const consentVersion = "2026-08-19";
+  const storageKey = "mpictureConsentVersion";
+  const consentModal = document.getElementById("consentModal");
+  const consentCheckbox = document.getElementById("consentCheckbox");
+  const agreeButton = document.getElementById("consentAgreeBtn");
+
+  if (!consentModal || !consentCheckbox || !agreeButton) return;
+
+  const hasConsented = sessionStorage.getItem(storageKey) === consentVersion;
+
+  if (!hasConsented) {
+    consentModal.style.display = "flex";
+    consentModal.setAttribute("aria-hidden", "false");
+  }
+
+  consentCheckbox.addEventListener("change", () => {
+    agreeButton.disabled = !consentCheckbox.checked;
+  });
+
+  agreeButton.addEventListener("click", () => {
+    if (!consentCheckbox.checked) return;
+
+    sessionStorage.setItem(storageKey, consentVersion);
+    consentModal.style.display = "none";
+    consentModal.setAttribute("aria-hidden", "true");
+  });
 };
 
 const setupMobileSidebar = () => {
@@ -416,8 +624,24 @@ const setupMobileSidebar = () => {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("fabAddPhoto").addEventListener("click", function () {
+  const photoSourcePicker = document.getElementById("photoSourcePicker");
+  const localPhotoSourceBtn = document.getElementById("localPhotoSourceBtn");
+
+  document
+    .getElementById("fabAddPhoto")
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+      photoSourcePicker?.classList.toggle("open");
+    });
+
+  localPhotoSourceBtn?.addEventListener("click", function (e) {
+    e.stopPropagation();
+    photoSourcePicker?.classList.remove("open");
     document.getElementById("imageInput").click();
+  });
+
+  document.addEventListener("click", () => {
+    photoSourcePicker?.classList.remove("open");
   });
 
   initEmptyState();
@@ -429,6 +653,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDateModeSwitch();
   setupBeforeUnload();
   setupResizeWarning();
+  setupInfoModals();
+  setupConsentGate();
   setupMobileSidebar();
   setupEditTools();
   setupThemeToggle();

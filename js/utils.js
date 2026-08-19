@@ -13,19 +13,27 @@ export const showToast = (message, type = "info", duration = 3000) => {
   if (!container) return;
 
   const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-
   const iconMap = {
     success: "check_circle",
     error: "error",
     warning: "warning",
     info: "info",
   };
+  const toastType = Object.prototype.hasOwnProperty.call(iconMap, type)
+    ? type
+    : "info";
 
-  toast.innerHTML = `
-    <span class="material-symbols-outlined">${iconMap[type] || "info"}</span>
-    <span>${message}</span>
-  `;
+  toast.className = `toast ${toastType}`;
+
+  const icon = document.createElement("span");
+  icon.className = "material-symbols-outlined";
+  icon.textContent = iconMap[toastType];
+
+  const text = document.createElement("span");
+  text.textContent = String(message ?? "");
+
+  toast.appendChild(icon);
+  toast.appendChild(text);
 
   container.appendChild(toast);
 
@@ -49,28 +57,7 @@ export const showToast = (message, type = "info", duration = 3000) => {
  * 空狀態提示 HTML（首頁說明文字）
  */
 export const EMPTY_STATE_HTML = `
-    <h2 class="disclaimer-primary"">🔞 免責聲明 🔞</h2>
-    <p >本網頁為個人開發之輔助工具，僅供參考使用，嚴禁不法利用 !<br>
-        使用者利用此網頁所產生之文件，開發者不負任何法律責任。<br> 
-    </p>
-    <p style="font-size: 1em; color: #e31b1b;">偽造、變造公文書，足以生損害於公眾或他人者，處一年以上七年以下有期徒刑。</p>
-   
-    <h3 class="disclaimer-primary">《快速開始》</h3>
-
-   <p >選擇文件類型「刑事案件」「交通事故」<br>
-      點擊左欄下方" + "按鈕開始新增照片<br>
-      📢切換至 「列表版面」可輸入照片【說明】文字<br>
-      點擊右上方下載文件按鈕即可下載DOCX、列印PDF文件<br>
-      
-    <h2 class="disclaimer-primary">⚠️</h2>
-    <p >
-      Word 2010或更舊版本不支援本網頁建立的DOCX文件。<br>
-      Auto-fill EXIF：請注意照片來源、格式，非所有照片均有拍攝日期資訊。<br>
-      本網頁不收集任何資料，所有照片均在使用者瀏覽器本地處理。
-
-    </p>
-
-    <p style="font-size: 0.85em; color: #888;">💡 可拖曳照片調整順序 ｜ 可點選照片進行旋轉編輯</p>
+    <div class="empty-state-minimal"></div>
 `;
 
 // ============ 圖片處理函數 ============

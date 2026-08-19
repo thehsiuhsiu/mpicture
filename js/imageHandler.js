@@ -24,12 +24,29 @@ const getImageDimensions = (sourceUrl) => {
   });
 };
 
-const buildImageRecord = async (blob, fileName, date = "") => {
+const normalizeFileNameForCompare = (fileName) =>
+  String(fileName || "").trim().toLowerCase();
+
+const createDuplicateSignature = ({ name, size, width = "", height = "" }) =>
+  [
+    normalizeFileNameForCompare(name),
+    Number.isFinite(size) ? size : "",
+    Number.isFinite(width) ? width : "",
+    Number.isFinite(height) ? height : "",
+  ].join("|");
+
+const buildImageRecord = async (blob, fileName, date = "", sourceFile = null) => {
   const sourceUrl = createObjectUrl(blob);
 
   try {
     const { width, height } = await getImageDimensions(sourceUrl);
     const thumbnailUrl = await createThumbnail(sourceUrl);
+    const duplicateSignature = createDuplicateSignature({
+      name: sourceFile?.name || fileName,
+      size: sourceFile?.size ?? blob.size,
+      width,
+      height,
+    });
 
     return {
       id: Date.now() + Math.random(),
@@ -40,9 +57,160 @@ const buildImageRecord = async (blob, fileName, date = "") => {
       width,
       height,
       date,
+      duplicateSignature,
     };
   } finally {
     revokeObjectUrl(sourceUrl);
+  }
+};
+
+const isHeicFile = (file) => {
+  const fileName = file.name.toLowerCase();
+  return (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    fileName.endsWith(".heic") ||
+    fileName.endsWith(".heif")
+  );
+};
+
+const getJpegName = (fileName) => fileName.replace(/\.(heic|heif)$/i, ".jpg");
+
+const extractHeicExifDate = async (file) => {
+  try {
+    const exifData = await exifr.parse(file, {
+      pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"],
+    });
+    const dateValue =
+      exifData?.DateTimeOriginal ||
+      exifData?.CreateDate ||
+      exifData?.ModifyDate;
+
+    return dateValue ? formatExifDate(dateValue) : null;
+  } catch (error) {
+    console.warn("HEIC EXIF 日期讀取失敗，繼續轉換:", file.name, error);
+    return null;
+  }
+};
+
+const normalizeConvertedBlob = (result) => {
+  const blob = Array.isArray(result) ? result[0] : result;
+  if (!(blob instanceof Blob)) {
+    throw new Error("HEIC 轉換結果不是有效圖片");
+  }
+
+  return blob.type ? blob : new Blob([blob], { type: "image/jpeg" });
+};
+
+const convertHeicWithHeic2any = async (file) => {
+  if (typeof heic2any !== "function") {
+    throw new Error("HEIC 轉換程式尚未載入");
+  }
+
+  const result = await heic2any({
+    blob: file,
+    toType: "image/jpeg",
+    quality: 0.88,
+  });
+
+  return normalizeConvertedBlob(result);
+};
+
+const convertNativelyDecodedImageToJpeg = async (file) => {
+  const sourceUrl = createObjectUrl(file);
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("瀏覽器無法直接讀取此 HEIC"));
+      image.src = sourceUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+
+    if (!canvas.width || !canvas.height) {
+      throw new Error("HEIC 圖片尺寸無效");
+    }
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) =>
+          blob ? resolve(blob) : reject(new Error("HEIC 原生轉 JPEG 失敗")),
+        "image/jpeg",
+        0.9,
+      );
+    });
+  } finally {
+    revokeObjectUrl(sourceUrl);
+  }
+};
+
+const convertHeicToJpeg = async (file) => {
+  try {
+    return await convertHeicWithHeic2any(file);
+  } catch (heic2anyError) {
+    console.warn(
+      "heic2any 轉換失敗，嘗試瀏覽器原生解碼:",
+      file.name,
+      heic2anyError,
+    );
+    return await convertNativelyDecodedImageToJpeg(file);
+  }
+};
+
+const processSingleFile = async (file) => {
+  if (!isHeicFile(file)) {
+    return await buildImageRecordWithExif(file, file.name);
+  }
+
+  const heicExifDate = await extractHeicExifDate(file);
+  const convertedBlob = await convertHeicToJpeg(file);
+
+  return await buildImageRecord(
+    convertedBlob,
+    getJpegName(file.name),
+    heicExifDate || "",
+    file,
+  );
+};
+
+const buildImageRecordWithExif = async (blob, fileName) => {
+  const tempUrl = createObjectUrl(blob);
+
+  try {
+    const img = new Image();
+
+    return await new Promise((resolve, reject) => {
+      img.onload = async () => {
+        EXIF.getData(img, async function () {
+          try {
+            const exifDate = EXIF.getTag(this, "DateTimeOriginal");
+            const formattedDate = formatExifDate(exifDate);
+            resolve(await buildImageRecord(blob, fileName, formattedDate, blob));
+          } catch (error) {
+            reject(error);
+          } finally {
+            revokeObjectUrl(tempUrl);
+          }
+        });
+      };
+
+      img.onerror = (error) => {
+        revokeObjectUrl(tempUrl);
+        reject(error);
+      };
+
+      img.src = tempUrl;
+    });
+  } catch (error) {
+    revokeObjectUrl(tempUrl);
+    throw error;
   }
 };
 
@@ -59,119 +227,42 @@ export const handleImageSelection = (event) => {
 /**
  * 處理檔案陣列
  */
-export const processFiles = (files) => {
+export const processFiles = async (files) => {
   console.log("Processing files:", files.length);
-  const promises = files.map(
-    (file) =>
-      new Promise((resolve, reject) => {
-        const isHEIC =
-          file.type === "image/heic" ||
-          file.type === "image/heif" ||
-          file.name.toLowerCase().endsWith(".heic") ||
-          file.name.toLowerCase().endsWith(".heif");
+  const imageDataArray = [];
+  const failedFiles = [];
 
-        const processImage = async (
-          blob,
-          fileName,
-          preExtractedDate = null,
-        ) => {
-          try {
-            if (preExtractedDate !== null) {
-              resolve(await buildImageRecord(blob, fileName, preExtractedDate));
-              return;
-            }
+  try {
+    if (files.some(isHeicFile)) {
+      showConversionModal();
+    }
 
-            const tempUrl = createObjectUrl(blob);
-            try {
-              const img = new Image();
-              img.onload = async () => {
-                EXIF.getData(img, async function () {
-                  try {
-                    const exifDate = EXIF.getTag(this, "DateTimeOriginal");
-                    const formattedDate = formatExifDate(exifDate);
-                    resolve(
-                      await buildImageRecord(blob, fileName, formattedDate),
-                    );
-                  } catch (error) {
-                    reject(error);
-                  } finally {
-                    revokeObjectUrl(tempUrl);
-                  }
-                });
-              };
-              img.onerror = (error) => {
-                revokeObjectUrl(tempUrl);
-                reject(error);
-              };
-              img.src = tempUrl;
-            } catch (error) {
-              revokeObjectUrl(tempUrl);
-              reject(error);
-            }
-          } catch (error) {
-            reject(error);
-          }
-        };
+    for (const file of files) {
+      try {
+        imageDataArray.push(await processSingleFile(file));
+      } catch (error) {
+        console.error("Image processing failed:", file.name, error);
+        failedFiles.push(file.name);
+      }
+    }
 
-        if (isHEIC) {
-          showConversionModal();
+    console.log("Image data processed:", imageDataArray.length);
+    imageDataArray.forEach(handleImageAddition);
 
-          exifr
-            .parse(file, {
-              pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"],
-            })
-            .then((exifData) => {
-              let heicExifDate = null;
-              if (exifData) {
-                const dateValue =
-                  exifData.DateTimeOriginal ||
-                  exifData.CreateDate ||
-                  exifData.ModifyDate;
-                if (dateValue) {
-                  heicExifDate = formatExifDate(dateValue);
-                  console.log("HEIC EXIF 日期讀取成功:", heicExifDate);
-                }
-              }
-
-              return heic2any({
-                blob: file,
-                toType: "image/jpeg",
-                quality: 0.8,
-              }).then((convertedBlob) => {
-                hideConversionModal();
-                processImage(
-                  convertedBlob,
-                  file.name.replace(/\.(heic|heif)$/i, ".jpg"),
-                  heicExifDate,
-                );
-              });
-            })
-            .catch((error) => {
-              hideConversionModal();
-              console.error("HEIC conversion failed:", error);
-              alert(
-                `HEIC 檔案 "${file.name}" 轉換失敗，請嘗試其他格式的圖片。`,
-              );
-              reject(error);
-            });
-        } else {
-          processImage(file, file.name);
-        }
-      }),
-  );
-
-  Promise.all(promises)
-    .then((imageDataArray) => {
-      console.log("Image data processed:", imageDataArray.length);
-      imageDataArray.forEach(handleImageAddition);
-      hideUploadingModal();
-    })
-    .catch((error) => {
-      hideConversionModal();
-      hideUploadingModal();
-      console.error("Error processing images:", error);
-      alert("處理圖片時發生錯誤，請重試。");
-    });
+    if (failedFiles.length) {
+      alert(
+        [
+          `有 ${failedFiles.length} 個檔案無法處理：`,
+          failedFiles.join("\n"),
+          "",
+          "部分 HEIC/HEIF 可能使用瀏覽器端轉換器不支援的編碼。請先用手機或電腦相簿匯出為 JPEG 後再匯入。",
+        ].join("\n"),
+      );
+    }
+  } finally {
+    hideConversionModal();
+    hideUploadingModal();
+  }
 };
 
 /**
@@ -199,6 +290,12 @@ const handleImageAddition = (imageData) => {
  * 檢查是否為重複圖片
  */
 const isDuplicateImage = (newImage) => {
+  if (newImage.duplicateSignature) {
+    return state.selectedImages.some(
+      (img) => img.duplicateSignature === newImage.duplicateSignature,
+    );
+  }
+
   return state.selectedImages.some(
     (img) =>
       img.name === newImage.name &&
