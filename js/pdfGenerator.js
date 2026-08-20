@@ -11,6 +11,74 @@ import {
 
 const PDF_PRINT_IMAGE_MAX_DIMENSION = 1800;
 
+const PDF_FONT_OPTIONS = {
+  kai: {
+    family: '"DFKai-SB", "標楷體", "KaiTi", serif',
+  },
+  "noto-serif-tc": {
+    family: '"Noto Serif TC", serif',
+  },
+  "noto-sans-tc": {
+    family: '"Noto Sans TC", sans-serif',
+  },
+  "jf-openhuninn": {
+    family: '"jf open huninn", sans-serif',
+    face: `
+                @font-face {
+                    font-family: "jf open huninn";
+                    src: url("./font/jf-openhuninn-2.1.ttf") format("truetype");
+                    font-weight: 400;
+                    font-style: normal;
+                    font-display: swap;
+                }
+    `,
+  },
+  iansui: {
+    family: '"Iansui", sans-serif',
+    face: `
+                @font-face {
+                    font-family: "Iansui";
+                    src: url("./font/Iansui-Regular.ttf") format("truetype");
+                    font-weight: 400;
+                    font-style: normal;
+                    font-display: swap;
+                }
+    `,
+  },
+  "gen-ryumin": {
+    family: '"Gen Ryu Min", "Noto Serif TC", serif',
+    face: `
+                @font-face {
+                    font-family: "Gen Ryu Min";
+                    src: url("./font/GenRyuMin2TW-B.otf") format("opentype");
+                    font-weight: 700;
+                    font-style: normal;
+                    font-display: swap;
+                }
+    `,
+  },
+  "chen-yuluoyan": {
+    family: '"Chen Yuluoyan", sans-serif',
+    face: `
+                @font-face {
+                    font-family: "Chen Yuluoyan";
+                    src: url("./font/ChenYuluoyan-2.0-Thin.ttf") format("truetype");
+                    font-weight: 300;
+                    font-style: normal;
+                    font-display: swap;
+                }
+    `,
+  },
+};
+
+const PDF_FONT_STYLESHEET =
+  "https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Noto+Serif+TC:wght@400;700&display=swap";
+
+const getSelectedPdfFont = () => {
+  const selectedFont = document.getElementById("pdfFontSelect")?.value;
+  return PDF_FONT_OPTIONS[selectedFont] || PDF_FONT_OPTIONS.kai;
+};
+
 const generateAccidentTagsText = (tags) => {
   const tagTexts = ACCIDENT_TAG_OPTIONS.map((option) => {
     const isChecked = tags && tags[option.id];
@@ -55,9 +123,10 @@ export const handleGeneratePDF = async () => {
     const caseUnit = document.getElementById("caseUni").value;
     const caseAddress = document.getElementById("caseAddress").value;
     const caseNumber = document.getElementById("caseNumber").value;
+    const pdfFont = getSelectedPdfFont();
 
     const title =
-      state.customDocTitles[state.selectedFormat] ||
+      state.customDocTitles[state.selectedFormat] ??
       FORMAT_TITLES[state.selectedFormat];
 
     const printableImages = await Promise.all(
@@ -75,7 +144,7 @@ export const handleGeneratePDF = async () => {
       }),
     );
 
-    let printContent = buildPrintHTML(title);
+    let printContent = buildPrintHTML(title, pdfFont);
 
     if (state.selectedFormat === "left") {
       printContent += buildCriminalContent(
@@ -147,7 +216,12 @@ export const handleGeneratePDF = async () => {
     cleanupTimer = window.setInterval(cleanup, 1500);
     cleanupTimeout = window.setTimeout(cleanup, 5 * 60 * 1000);
 
-    const startPrint = () => {
+    const startPrint = async () => {
+      try {
+        await frameDocument.fonts?.ready;
+      } catch (error) {
+        console.warn("PDF 字型載入等待失敗，改用瀏覽器備援字型:", error);
+      }
       frameWindow.focus();
       frameWindow.print();
       window.setTimeout(() => {
@@ -182,8 +256,9 @@ export const handleGeneratePDF = async () => {
   }
 };
 
-const buildPrintHTML = (title) => {
+const buildPrintHTML = (title, pdfFont) => {
   const safeTitle = escapeHtml(title);
+  const fontFamily = pdfFont.family;
 
   return `
         <!DOCTYPE html>
@@ -191,7 +266,11 @@ const buildPrintHTML = (title) => {
         <head>
             <meta charset="UTF-8">
             <title>${safeTitle}</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="${PDF_FONT_STYLESHEET}" rel="stylesheet">
             <style>
+                ${pdfFont.face || ""}
                 @page {
                     size: A4;
                     margin: 12mm 20mm 1mm 20mm;
@@ -202,7 +281,7 @@ const buildPrintHTML = (title) => {
                     box-sizing: border-box;
                 }
                 body {
-                    font-family: "DFKai-SB", "標楷體", "KaiTi", serif;
+                    font-family: ${fontFamily};
                     font-size: 11.5pt;
                     line-height: 1.2;
                 }

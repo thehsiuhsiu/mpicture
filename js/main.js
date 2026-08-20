@@ -220,15 +220,19 @@ const initDocumentTitles = () => {
   const docTitleMiddle = document.getElementById("docTitleMiddle");
 
   if (docTitleLeft) {
+    state.customDocTitles.left = docTitleLeft.value.trim();
+
     docTitleLeft.addEventListener("input", (e) => {
-      const newTitle = e.target.value.trim() || "刑案照片黏貼表";
+      const newTitle = e.target.value.trim();
       state.customDocTitles.left = newTitle;
     });
   }
 
   if (docTitleMiddle) {
+    state.customDocTitles.middle = docTitleMiddle.value.trim();
+
     docTitleMiddle.addEventListener("input", (e) => {
-      const newTitle = e.target.value.trim() || "非道路交通事故照片黏貼紀錄表";
+      const newTitle = e.target.value.trim();
       state.customDocTitles.middle = newTitle;
     });
   }
@@ -258,13 +262,13 @@ const init = () => {
   const downloadPdf = document.getElementById("downloadPdf");
   const downloadZip = document.getElementById("downloadZip");
 
+  downloadMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
   elements.generateButton.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (state.selectedImages.length > 0) {
-      downloadMenu.classList.toggle("show");
-    } else {
-      showToast("尚未新增照片可建立文件😵", "error");
-    }
+    downloadMenu.classList.toggle("show");
   });
 
   downloadDocx.addEventListener("click", (e) => {
@@ -441,6 +445,103 @@ const setupDateModeSwitch = () => {
 
   dateSwitch.addEventListener("change", setDateInputMode);
   setDateInputMode();
+};
+
+const setupPdfFontPreview = () => {
+  const fontSelect = document.getElementById("pdfFontSelect");
+  const dropdown = document.getElementById("pdfFontDropdown");
+  const trigger = document.getElementById("pdfFontTrigger");
+  const triggerText = trigger?.querySelector(".pdf-font-trigger-text");
+  const options = Array.from(
+    document.querySelectorAll(".pdf-font-option[data-value]"),
+  );
+
+  if (!fontSelect || !dropdown || !trigger || !triggerText || !options.length) {
+    return;
+  }
+
+  const previewClasses = [
+    "font-preview-kai",
+    "font-preview-noto-serif",
+    "font-preview-noto-sans",
+    "font-preview-jf-openhuninn",
+    "font-preview-iansui",
+    "font-preview-gen-ryumin",
+    "font-preview-chen-yuluoyan",
+  ];
+
+  const previewClassByValue = {
+    kai: "font-preview-kai",
+    "noto-serif-tc": "font-preview-noto-serif",
+    "noto-sans-tc": "font-preview-noto-sans",
+    "jf-openhuninn": "font-preview-jf-openhuninn",
+    iansui: "font-preview-iansui",
+    "gen-ryumin": "font-preview-gen-ryumin",
+    "chen-yuluoyan": "font-preview-chen-yuluoyan",
+  };
+
+  const closeMenu = () => {
+    dropdown.classList.remove("open");
+    trigger.setAttribute("aria-expanded", "false");
+  };
+
+  const openMenu = () => {
+    dropdown.classList.add("open");
+    trigger.setAttribute("aria-expanded", "true");
+  };
+
+  const updateFontPreview = () => {
+    const selectedOption = options.find(
+      (option) => option.dataset.value === fontSelect.value,
+    );
+
+    trigger.classList.remove(...previewClasses);
+    trigger.classList.add(
+      previewClassByValue[fontSelect.value] || "font-preview-kai",
+    );
+    triggerText.textContent =
+      selectedOption?.querySelector(".pdf-font-option-name")?.textContent ||
+      fontSelect.selectedOptions[0]?.textContent ||
+      "標楷體";
+
+    options.forEach((option) => {
+      const isSelected = option.dataset.value === fontSelect.value;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-selected", String(isSelected));
+    });
+  };
+
+  trigger.addEventListener("click", () => {
+    if (dropdown.classList.contains("open")) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  });
+
+  options.forEach((option) => {
+    option.addEventListener("click", () => {
+      fontSelect.value = option.dataset.value;
+      fontSelect.dispatchEvent(new Event("change"));
+      closeMenu();
+      trigger.focus();
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!dropdown.contains(event.target)) {
+      closeMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  fontSelect.addEventListener("change", updateFontPreview);
+  updateFontPreview();
 };
 
 const setupBeforeUnload = () => {
@@ -651,6 +752,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupPhotoSizeSlider();
   setupSidebarInputs();
   setupDateModeSwitch();
+  setupPdfFontPreview();
   setupBeforeUnload();
   setupResizeWarning();
   setupInfoModals();

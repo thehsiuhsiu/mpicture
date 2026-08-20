@@ -1,6 +1,6 @@
 ﻿// docxGenerator.js
 
-import { state, FORMAT_NAMES, ACCIDENT_TAG_OPTIONS } from "./state.js";
+import { state, ACCIDENT_TAG_OPTIONS } from "./state.js";
 import {
   resizeImageForDoc,
   getFormattedDate,
@@ -8,6 +8,16 @@ import {
   hideLoadingModal,
   blobToArrayBuffer,
 } from "./utils.js";
+
+const sanitizeDownloadFileName = (fileName) => {
+  const cleanedName = String(fileName ?? "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "");
+
+  return cleanedName || "照片黏貼表";
+};
 
 export const handleGenerateWrapper = async (event) => {
   event.preventDefault();
@@ -80,7 +90,10 @@ const handleGenerate = async () => {
     const downloadUrl = URL.createObjectURL(blob);
     link.href = downloadUrl;
     const dateString = getFormattedDate();
-    link.download = `${FORMAT_NAMES[state.selectedFormat]}照片黏貼表_${dateString}.docx`;
+    const downloadTitle = sanitizeDownloadFileName(
+      state.customDocTitles[state.selectedFormat],
+    );
+    link.download = `${downloadTitle}_${dateString}.docx`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
   } catch (error) {
@@ -112,11 +125,11 @@ const createDocument = (docx, format, formData, images) => {
 
   switch (format) {
     case "left":
-      title = state.customDocTitles.left || "刑案照片黏貼表";
+      title = state.customDocTitles.left ?? "刑案照片黏貼表";
       createContent = createCriminalContent;
       break;
     case "middle":
-      title = state.customDocTitles.middle || "非道路交通事故照片黏貼紀錄表";
+      title = state.customDocTitles.middle ?? "非道路交通事故照片黏貼紀錄表";
       createContent = createTrafficAccidentContent;
       break;
     default:
