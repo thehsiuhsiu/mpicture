@@ -92,6 +92,122 @@
               <span class="material-symbols-outlined">picture_as_pdf</span>
               <span>列印/PDF</span>
             </button>
+            <div class="download-font-setting">
+              <label for="pdfFontSelect">PDF 字型</label>
+              <select
+                id="pdfFontSelect"
+                class="native-font-select"
+                aria-hidden="true"
+                tabindex="-1"
+              >
+                <option value="kai" class="font-preview-kai">標楷體</option>
+                <option value="noto-serif-tc" class="font-preview-noto-serif">
+                  思源宋體 / Noto Serif TC
+                </option>
+                <option value="noto-sans-tc" class="font-preview-noto-sans">
+                  思源黑體 / Noto Sans TC
+                </option>
+                <option
+                  value="jf-openhuninn"
+                  class="font-preview-jf-openhuninn"
+                >
+                  jf open 粉圓
+                </option>
+                <option value="iansui" class="font-preview-iansui">
+                  芫荽 / Iansui
+                </option>
+                <option value="gen-ryumin" class="font-preview-gen-ryumin">
+                  源流明體
+                </option>
+                <option
+                  value="chen-yuluoyan"
+                  class="font-preview-chen-yuluoyan"
+                >
+                  辰宇落雁體
+                </option>
+              </select>
+              <div class="pdf-font-dropdown" id="pdfFontDropdown">
+                <button
+                  type="button"
+                  class="pdf-font-trigger font-preview-kai"
+                  id="pdfFontTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="pdf-font-trigger-text">標楷體</span>
+                </button>
+                <div
+                  class="pdf-font-menu"
+                  id="pdfFontMenu"
+                  role="listbox"
+                  aria-label="僅套用 PDF 字型"
+                >
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-kai is-selected"
+                    role="option"
+                    aria-selected="true"
+                    data-value="kai"
+                  >
+                    <span class="pdf-font-option-name">標楷體</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-noto-serif"
+                    role="option"
+                    aria-selected="false"
+                    data-value="noto-serif-tc"
+                  >
+                    <span class="pdf-font-option-name">思源宋體</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-noto-sans"
+                    role="option"
+                    aria-selected="false"
+                    data-value="noto-sans-tc"
+                  >
+                    <span class="pdf-font-option-name">思源黑體</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-jf-openhuninn"
+                    role="option"
+                    aria-selected="false"
+                    data-value="jf-openhuninn"
+                  >
+                    <span class="pdf-font-option-name">jf open 粉圓</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-iansui"
+                    role="option"
+                    aria-selected="false"
+                    data-value="iansui"
+                  >
+                    <span class="pdf-font-option-name">芫荽</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-gen-ryumin"
+                    role="option"
+                    aria-selected="false"
+                    data-value="gen-ryumin"
+                  >
+                    <span class="pdf-font-option-name">源流明體</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="pdf-font-option font-preview-chen-yuluoyan"
+                    role="option"
+                    aria-selected="false"
+                    data-value="chen-yuluoyan"
+                  >
+                    <span class="pdf-font-option-name">辰宇落雁體</span>
+                  </button>
+                </div>
+              </div>
+            </div>
             <button type="button" class="download-option" id="downloadZip">
               <span class="material-symbols-outlined"
                 >deployed_code_update</span
@@ -446,9 +562,19 @@
           </p>
         </section>
 
+        <section>
+          <h3>第三方字型授權</h3>
+          <p>
+            本工具使用之 Noto Sans TC、Noto Serif TC、jf open 粉圓、芫荽、源流明體與辰宇落雁體等開源字型，依各字型原始授權條款提供，主要為 SIL Open Font License 1.1。上述字型可用於個人與商業用途，但不得將字型檔案本身單獨販售。
+          </p>
+          <p>
+            若本工具與字型檔一併散布，應保留專案內的第三方授權說明與各字型原始授權資訊。
+          </p>
+        </section>
+
         <label class="consent-check">
           <input type="checkbox" id="consentCheckbox" />
-          <span>我已閱讀並同意上述免責聲明與隱私權聲明</span>
+          <span>我已閱讀並同意上述免責聲明、隱私權聲明與第三方字型授權說明</span>
         </label>
 
         <button
@@ -510,6 +636,16 @@
           <p>
             使用者匯入的照片只用於本機產生預覽、文件、PDF 或 ZIP
             下載。本網站不會主動上傳照片、不會分享照片，也不會將照片交給第三方分析或廣告服務。
+          </p>
+        </section>
+
+        <section>
+          <h3>第三方字型與授權</h3>
+          <p>
+            本網站提供 PDF 字型選擇功能，部分字型檔隨本工具一併提供。這些字型依其原始開源授權條款使用，主要為 SIL Open Font License 1.1，可用於個人與商業用途，但不得將字型檔案本身單獨販售。
+          </p>
+          <p>
+            字型授權資訊屬第三方授權聲明，不涉及個人資料蒐集或隱私資料處理。
           </p>
         </section>
 
