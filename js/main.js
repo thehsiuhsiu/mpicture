@@ -429,7 +429,7 @@ const setupDateModeSwitch = () => {
 
   function setDateInputMode() {
     if (dateSwitch.checked) {
-      dateInput.disabled = true;
+      dateInput.disabled = false;
       dateModeLabel.textContent = "Auto-fill EXIF";
       dateModeLabel.classList.remove("disabled");
     } else {
