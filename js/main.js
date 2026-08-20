@@ -268,7 +268,11 @@ const init = () => {
 
   elements.generateButton.addEventListener("click", (e) => {
     e.stopPropagation();
-    downloadMenu.classList.toggle("show");
+    if (state.selectedImages.length > 0) {
+      downloadMenu.classList.toggle("show");
+    } else {
+      showToast("尚未新增照片可建立文件", "error");
+    }
   });
 
   downloadDocx.addEventListener("click", (e) => {

@@ -750,10 +750,12 @@ export const updateCreateButtonState = () => {
     console.error("Create button not found");
     return;
   }
-  createButton.classList.remove("create-btn-disabled");
-  createButton.classList.add("create-btn-enabled");
+  const isEnabled = state.selectedImages.length > 0;
 
-  console.log("Create button state updated. Menu enabled: true");
+  createButton.classList.toggle("create-btn-disabled", !isEnabled);
+  createButton.classList.toggle("create-btn-enabled", isEnabled);
+
+  console.log("Create button state updated. Enabled:", isEnabled);
   console.log("Selected images count:", state.selectedImages.length);
 };
 
