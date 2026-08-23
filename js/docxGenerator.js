@@ -9,6 +9,15 @@ import {
   blobToArrayBuffer,
 } from "./utils.js";
 
+const platformName =
+  globalThis.navigator?.userAgentData?.platform ||
+  globalThis.navigator?.platform ||
+  globalThis.navigator?.userAgent ||
+  "";
+const DOCX_KAI_FONT = /Mac|iPhone|iPad|iPod/i.test(platformName)
+  ? "BiauKaiTC"
+  : "DFKai-SB";
+
 const sanitizeDownloadFileName = (fileName) => {
   const cleanedName = String(fileName ?? "")
     .trim()
@@ -574,13 +583,13 @@ const createDefaultFooter = (docx) => {
     children: [
       new docx.Paragraph({
         children: [
-          new docx.TextRun({ text: "第 ", size: 20, font: "DFKai-SB" }),
+          new docx.TextRun({ text: "第 ", size: 20, font: DOCX_KAI_FONT }),
           new docx.TextRun({
             children: [docx.PageNumber.CURRENT],
             size: 20,
-            font: "DFKai-SB",
+            font: DOCX_KAI_FONT,
           }),
-          new docx.TextRun({ text: " 頁", size: 20, font: "DFKai-SB" }),
+          new docx.TextRun({ text: " 頁", size: 20, font: DOCX_KAI_FONT }),
         ],
         alignment: docx.AlignmentType.CENTER,
         style: "Footer",
@@ -598,7 +607,7 @@ const createDocumentStyles = (docx) => {
         basedOn: "Normal",
         next: "Normal",
         quickFormat: true,
-        run: { size: 23, font: "DFKai-SB" },
+        run: { size: 23, font: DOCX_KAI_FONT },
         paragraph: { alignment: docx.AlignmentType.DISTRIBUTE },
       },
       {
@@ -607,7 +616,7 @@ const createDocumentStyles = (docx) => {
         basedOn: "Normal",
         next: "Normal",
         quickFormat: true,
-        run: { size: 44, font: "DFKai-SB" },
+        run: { size: 44, font: DOCX_KAI_FONT },
       },
     ],
   };

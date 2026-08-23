@@ -13,7 +13,8 @@ const PDF_PRINT_IMAGE_MAX_DIMENSION = 1800;
 
 const PDF_FONT_OPTIONS = {
   kai: {
-    family: '"DFKai-SB", "標楷體", "KaiTi", serif',
+    family:
+      '"BiauKaiTC", "BiauKai TC", "Kaiti TC", "Kai", "BiauKai", "DFKai-SB", "標楷體", "KaiTi", serif',
   },
   "noto-serif-tc": {
     family: '"Noto Serif TC", serif',

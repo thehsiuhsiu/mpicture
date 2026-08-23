@@ -11,8 +11,8 @@ import {
   processFiles,
   replaceImageCollection,
 } from "./imageHandler.js";
-import { handleGenerateWrapper } from "./docxGenerator.js";
-import { handleGeneratePDF } from "./pdfGenerator.js";
+import { handleGenerateWrapper } from "./docxGenerator.js?v=20260823-8";
+import { handleGeneratePDF } from "./pdfGenerator.js?v=20260823-8";
 import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
 import { initGooglePhotosImport } from "./googlePhotos.js";
 import {
