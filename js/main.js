@@ -9,11 +9,17 @@ import {
   handleImageClick,
   rotateImage,
   processFiles,
+  replaceImageCollection,
 } from "./imageHandler.js";
 import { handleGenerateWrapper } from "./docxGenerator.js";
 import { handleGeneratePDF } from "./pdfGenerator.js";
 import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
 import { initGooglePhotosImport } from "./googlePhotos.js";
+import {
+  initProjectPersistence,
+  shouldWarnBeforeUnload,
+} from "./projectPersistence.js?v=20260823-7";
+import { notifyProjectChanged } from "./projectEvents.js";
 
 const initEmptyState = () => {
   const imagePreview = document.getElementById("imagePreview");
@@ -192,6 +198,69 @@ const updateToggleState = (value) => {
   document.body.classList.add(`format-${value}`);
 
   updateSidebarFields(value);
+  notifyProjectChanged();
+};
+
+const applyProjectSnapshot = async (project) => {
+  const restoredImages = project.images.map((image, index) => ({
+    id: Date.now() + index + Math.random(),
+    blob: image.blob,
+    name: image.name,
+    size: image.size,
+    width: image.width,
+    height: image.height,
+    date: image.exifDate,
+    customDate: image.customDate,
+    address: image.address,
+    description: image.description,
+    accidentTags: image.accidentTags,
+    rotation: image.rotation,
+    duplicateSignature: [
+      image.name.trim().toLowerCase(),
+      image.size,
+      image.width,
+      image.height,
+    ].join("|"),
+  }));
+
+  await replaceImageCollection(restoredImages);
+
+  const fieldValues = {
+    zipPrefix: project.fields.zipPrefix,
+    caseUni: project.fields.caseUni,
+    caseDate: project.fields.caseDate,
+    caseAddress: project.fields.caseAddress,
+    caseNumber: project.fields.caseNumber,
+    docTitleLeft: project.titles.left,
+    docTitleMiddle: project.titles.middle,
+  };
+  Object.entries(fieldValues).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+  });
+
+  state.customDocTitles.left = project.titles.left;
+  state.customDocTitles.middle = project.titles.middle;
+  updateToggleState(project.settings.selectedFormat);
+  handleViewModeChange(project.settings.viewMode);
+
+  const dateSwitch = document.getElementById("dateModeSwitch");
+  if (dateSwitch) {
+    dateSwitch.checked = project.settings.dateMode;
+    dateSwitch.dispatchEvent(new Event("change"));
+  }
+
+  const fontSelect = document.getElementById("pdfFontSelect");
+  if (fontSelect) {
+    fontSelect.value = project.settings.pdfFont;
+    fontSelect.dispatchEvent(new Event("change"));
+  }
+
+  const photoSizeSlider = document.getElementById("photoSizeSlider");
+  if (photoSizeSlider) {
+    photoSizeSlider.value = String(project.settings.photoSize);
+    photoSizeSlider.dispatchEvent(new Event("input"));
+  }
 };
 
 const updateSidebarFields = (format) => {
@@ -268,11 +337,7 @@ const init = () => {
 
   elements.generateButton.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (state.selectedImages.length > 0) {
-      downloadMenu.classList.toggle("show");
-    } else {
-      showToast("尚未新增照片可建立文件", "error");
-    }
+    downloadMenu.classList.toggle("show");
   });
 
   downloadDocx.addEventListener("click", (e) => {
@@ -405,6 +470,7 @@ const setupPhotoSizeSlider = () => {
     );
     slider.value = newValue;
     updateImageSizes();
+    notifyProjectChanged();
   });
 
   sizeIncBtn.addEventListener("click", () => {
@@ -414,6 +480,7 @@ const setupPhotoSizeSlider = () => {
     );
     slider.value = newValue;
     updateImageSizes();
+    notifyProjectChanged();
   });
 };
 
@@ -550,17 +617,7 @@ const setupPdfFontPreview = () => {
 
 const setupBeforeUnload = () => {
   window.onbeforeunload = function (e) {
-    if (window.__mpictureSuppressBeforeUnload) return;
-
-    const hasInput =
-      document.getElementById("zipPrefix").value.trim() ||
-      document.getElementById("caseUni").value.trim() ||
-      document.getElementById("caseAddress").value.trim() ||
-      document.getElementById("caseDate").value.trim() ||
-      document.getElementById("caseNumber").value.trim() ||
-      (state.selectedImages && state.selectedImages.length > 0);
-
-    if (hasInput) {
+    if (shouldWarnBeforeUnload()) {
       e.preventDefault();
       e.returnValue = "";
       return "";
@@ -592,10 +649,14 @@ const setupModalTrigger = (triggerId, modalId, closeId) => {
   const trigger = document.getElementById(triggerId);
   const modal = document.getElementById(modalId);
   const closeButton = document.getElementById(closeId);
+  const scrollContent = modal?.querySelector(
+    ".privacy-modal-content, .info-modal-content",
+  );
 
   if (!trigger || !modal || !closeButton) return;
 
   const openModal = () => {
+    if (scrollContent) scrollContent.scrollTop = 0;
     modal.style.display = "flex";
     modal.setAttribute("aria-hidden", "false");
   };
@@ -627,22 +688,79 @@ const setupModalTrigger = (triggerId, modalId, closeId) => {
 const setupInfoModals = () => {
   setupModalTrigger("privacyPolicyBtn", "privacyModal", "privacyModalClose");
   setupModalTrigger("faqBtn", "faqModal", "faqModalClose");
+
+  const privacyModal = document.getElementById("privacyModal");
+  const privacyContent = privacyModal?.querySelector(
+    ".privacy-modal-content",
+  );
+  containWheelScroll(privacyContent);
+  blockWheelScroll(privacyModal);
 };
 
-const setupConsentGate = () => {
-  const consentVersion = "2026-08-19";
+const containWheelScroll = (scrollElement) => {
+  if (!scrollElement) return;
+
+  scrollElement.addEventListener(
+    "wheel",
+    (event) => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+      const canScroll = scrollHeight > clientHeight;
+
+      if (!canScroll) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      const scrollingUp = event.deltaY < 0;
+      const scrollingDown = event.deltaY > 0;
+      const atTop = scrollTop <= 0;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+      if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
+        event.preventDefault();
+      }
+
+      event.stopPropagation();
+    },
+    { passive: false },
+  );
+};
+
+const blockWheelScroll = (element) => {
+  if (!element) return;
+
+  element.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+};
+
+const setupConsentGate = (onConsentReady) => {
+  const consentVersion = "2026-08-23-v2";
   const storageKey = "mpictureConsentVersion";
   const consentModal = document.getElementById("consentModal");
+  const consentContent = consentModal?.querySelector(".consent-modal-content");
   const consentCheckbox = document.getElementById("consentCheckbox");
   const agreeButton = document.getElementById("consentAgreeBtn");
 
   if (!consentModal || !consentCheckbox || !agreeButton) return;
+
+  containWheelScroll(consentContent);
+  blockWheelScroll(consentModal);
 
   const hasConsented = sessionStorage.getItem(storageKey) === consentVersion;
 
   if (!hasConsented) {
     consentModal.style.display = "flex";
     consentModal.setAttribute("aria-hidden", "false");
+  }
+
+  if (hasConsented) {
+    queueMicrotask(onConsentReady);
   }
 
   consentCheckbox.addEventListener("change", () => {
@@ -655,6 +773,7 @@ const setupConsentGate = () => {
     sessionStorage.setItem(storageKey, consentVersion);
     consentModal.style.display = "none";
     consentModal.setAttribute("aria-hidden", "true");
+    onConsentReady();
   });
 };
 
@@ -760,7 +879,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setupBeforeUnload();
   setupResizeWarning();
   setupInfoModals();
-  setupConsentGate();
+  setupConsentGate(() => {
+    initProjectPersistence({ applyProject: applyProjectSnapshot });
+  });
   setupMobileSidebar();
   setupEditTools();
   setupThemeToggle();

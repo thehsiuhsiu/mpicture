@@ -108,7 +108,6 @@ export const handleGeneratePDF = async () => {
     return;
   }
   showLoadingModal();
-  window.__mpictureSuppressBeforeUnload = true;
 
   let printFrame;
   const printUrls = [];
@@ -204,7 +203,6 @@ export const handleGeneratePDF = async () => {
         cleanupTimeout = null;
       }
       printUrls.forEach(revokeObjectUrl);
-      window.__mpictureSuppressBeforeUnload = false;
       if (printFrame?.parentNode) {
         printFrame.parentNode.removeChild(printFrame);
       }
@@ -246,7 +244,6 @@ export const handleGeneratePDF = async () => {
     if (cleanupTimeout) {
       window.clearTimeout(cleanupTimeout);
     }
-    window.__mpictureSuppressBeforeUnload = false;
     if (printFrame?.parentNode) {
       printFrame.parentNode.removeChild(printFrame);
     }

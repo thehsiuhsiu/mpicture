@@ -12,6 +12,61 @@ import {
   createObjectUrl,
   revokeObjectUrl,
 } from "./utils.js";
+import { notifyProjectChanged } from "./projectEvents.js";
+
+export const IMAGE_SECURITY_LIMITS = Object.freeze({
+  maxCount: 500,
+  maxFileBytes: 64 * 1024 * 1024,
+  maxTotalBytes: 1024 * 1024 * 1024,
+  maxDimension: 20000,
+  maxPixels: 100_000_000,
+});
+
+const SAFE_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/tiff",
+  "image/avif",
+]);
+
+const detectSafeImageType = async (blob) => {
+  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const ascii = String.fromCharCode(...bytes);
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 8 &&
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (value, index) => bytes[index] === value,
+    )
+  ) {
+    return "image/png";
+  }
+  if (ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a")) {
+    return "image/gif";
+  }
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") {
+    return "image/webp";
+  }
+  if (ascii.startsWith("BM")) return "image/bmp";
+  if (
+    (bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0) ||
+    (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0 && bytes[3] === 0x2a)
+  ) {
+    return "image/tiff";
+  }
+  if (
+    ascii.slice(4, 8) === "ftyp" &&
+    ["avif", "avis"].includes(ascii.slice(8, 12))
+  ) {
+    return "image/avif";
+  }
+  return null;
+};
 
 const getImageDimensions = (sourceUrl) => {
   return new Promise((resolve, reject) => {
@@ -43,10 +98,22 @@ const buildImageRecord = async (
   date = "",
   sourceFile = null,
 ) => {
+  if (!blob.size || blob.size > IMAGE_SECURITY_LIMITS.maxFileBytes) {
+    throw new Error("圖片大小超過安全限制");
+  }
   const sourceUrl = createObjectUrl(blob);
 
   try {
     const { width, height } = await getImageDimensions(sourceUrl);
+    if (
+      !width ||
+      !height ||
+      width > IMAGE_SECURITY_LIMITS.maxDimension ||
+      height > IMAGE_SECURITY_LIMITS.maxDimension ||
+      width * height > IMAGE_SECURITY_LIMITS.maxPixels
+    ) {
+      throw new Error("圖片尺寸超過安全限制");
+    }
     const thumbnailUrl = await createThumbnail(sourceUrl);
     const duplicateSignature = createDuplicateSignature({
       name: sourceFile?.name || fileName,
@@ -83,10 +150,12 @@ const isHeicFile = (file) => {
 
 const isSupportedImageFile = (file) => {
   const fileName = file.name.toLowerCase();
+  const mimeType = file.type.toLowerCase();
   return (
-    file.type.startsWith("image/") ||
+    SAFE_IMAGE_MIME_TYPES.has(mimeType) ||
     isHeicFile(file) ||
-    /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i.test(fileName)
+    ((!mimeType || mimeType === "application/octet-stream") &&
+      /\.(jpe?g|png|gif|webp|bmp|tiff?|avif)$/i.test(fileName))
   );
 };
 
@@ -182,7 +251,14 @@ const convertHeicToJpeg = async (file) => {
 
 const processSingleFile = async (file) => {
   if (!isHeicFile(file)) {
-    return await buildImageRecordWithExif(file, file.name);
+    const detectedType = await detectSafeImageType(file);
+    if (!detectedType) throw new Error("圖片內容不是允許的安全格式");
+    if (file.type && file.type !== "application/octet-stream" && file.type !== detectedType) {
+      throw new Error("圖片內容與宣告格式不一致");
+    }
+    const safeBlob =
+      file.type === detectedType ? file : new Blob([file], { type: detectedType });
+    return await buildImageRecordWithExif(safeBlob, file.name);
   }
 
   const heicExifDate = await extractHeicExifDate(file);
@@ -250,18 +326,49 @@ export const processFiles = async (files) => {
   const imageDataArray = [];
   const failedFiles = [];
   const unsupportedFiles = [];
+  const oversizedFiles = [];
+  const availableSlots = Math.max(
+    0,
+    IMAGE_SECURITY_LIMITS.maxCount - state.selectedImages.length,
+  );
+  const candidateFiles = files.slice(0, availableSlots);
   const supportedFiles = files.filter((file) => {
+    if (!candidateFiles.includes(file)) {
+      unsupportedFiles.push(`${file.name || "未命名檔案"}（超過照片數量上限）`);
+      return false;
+    }
+    if (file.size > IMAGE_SECURITY_LIMITS.maxFileBytes) {
+      oversizedFiles.push(file.name || "未命名檔案");
+      return false;
+    }
     if (isSupportedImageFile(file)) return true;
     unsupportedFiles.push(file.name || "未命名檔案");
     return false;
   });
 
+  const currentTotalBytes = state.selectedImages.reduce(
+    (total, image) => total + (image.blob?.size || 0),
+    0,
+  );
+  let acceptedTotalBytes = currentTotalBytes;
+  const sizeLimitedFiles = supportedFiles.filter((file) => {
+    if (
+      acceptedTotalBytes + file.size >
+      IMAGE_SECURITY_LIMITS.maxTotalBytes
+    ) {
+      oversizedFiles.push(file.name || "未命名檔案");
+      return false;
+    }
+    acceptedTotalBytes += file.size;
+    return true;
+  });
+
   try {
-    if (supportedFiles.some(isHeicFile)) {
+    if (sizeLimitedFiles.some(isHeicFile)) {
       showConversionModal();
     }
 
-    for (const file of supportedFiles) {
+    for (const file of sizeLimitedFiles) {
       try {
         imageDataArray.push(await processSingleFile(file));
       } catch (error) {
@@ -291,6 +398,17 @@ export const processFiles = async (files) => {
           unsupportedFiles.join("\n"),
           "",
           "目前僅支援照片圖片檔，影片不會匯入。",
+        ].join("\n"),
+      );
+    }
+
+    if (oversizedFiles.length) {
+      alert(
+        [
+          `已略過 ${oversizedFiles.length} 個超過安全容量限制的檔案：`,
+          oversizedFiles.join("\n"),
+          "",
+          "單張照片上限為 64 MB，專案照片總量上限為 1 GB。",
         ].join("\n"),
       );
     }
@@ -347,6 +465,7 @@ const addImageToCollection = (imageData) => {
   state.selectedImages.push(imageData);
   addImageToPreview(imageData, state.selectedImages.length);
   updateCreateButtonState();
+  notifyProjectChanged();
   console.log("Image added to collection:", imageData.name);
   console.log("Total images in collection:", state.selectedImages.length);
 };
@@ -384,6 +503,7 @@ const addImageToPreview = (imageData, counter) => {
   const dateInput = document.createElement("input");
   dateInput.type = "text";
   dateInput.className = "image-date-input";
+  dateInput.maxLength = 80;
   dateInput.placeholder = "日期 (留空則使用側邊欄資訊)";
   dateInput.value = state.imageDates[imageData.id] || "";
   dateInput.addEventListener("input", (e) => {
@@ -399,6 +519,7 @@ const addImageToPreview = (imageData, counter) => {
   const addressInput = document.createElement("input");
   addressInput.type = "text";
   addressInput.className = "image-address-input";
+  addressInput.maxLength = 500;
   addressInput.placeholder = "地址 (留空則使用側邊欄資訊)";
   addressInput.value = state.imageAddresses[imageData.id] || "";
   addressInput.addEventListener("input", (e) => {
@@ -413,6 +534,7 @@ const addImageToPreview = (imageData, counter) => {
 
   const textarea = document.createElement("textarea");
   textarea.className = "image-description-textarea";
+  textarea.maxLength = 5000;
   textarea.placeholder = "說明 (選填)";
   textarea.value = state.imageDescriptions[imageData.id] || "";
   textarea.addEventListener("input", (e) => {
@@ -455,6 +577,7 @@ const addImageToPreview = (imageData, counter) => {
       const otherInput = document.createElement("input");
       otherInput.type = "text";
       otherInput.className = "accident-tag-other-input";
+      otherInput.maxLength = 500;
       otherInput.placeholder = "________________";
       otherInput.value = state.imageAccidentTags[imageData.id].otherText || "";
       otherInput.disabled = !checkbox.checked;
@@ -520,6 +643,7 @@ export const handleViewModeChange = (mode) => {
       });
     }
   }
+  notifyProjectChanged();
   console.log("View mode changed to:", state.viewMode);
 };
 
@@ -590,6 +714,7 @@ const handleImageDrop = (draggedId, dropZone) => {
     }
 
     updateImageOrder();
+    notifyProjectChanged();
   }
 };
 
@@ -721,6 +846,7 @@ export const removeImage = async (id) => {
   if (state.selectedImages.length === 0) {
     showEmptyState();
   }
+  notifyProjectChanged();
 };
 
 const showEmptyState = () => {
@@ -752,10 +878,19 @@ export const updateCreateButtonState = () => {
   }
   const isEnabled = state.selectedImages.length > 0;
 
-  createButton.classList.toggle("create-btn-disabled", !isEnabled);
-  createButton.classList.toggle("create-btn-enabled", isEnabled);
+  createButton.classList.remove("create-btn-disabled");
+  createButton.classList.add("create-btn-enabled");
+  [
+    "downloadDocx",
+    "downloadPdf",
+    "downloadZip",
+    "exportProjectBtn",
+  ].forEach((buttonId) => {
+    const button = document.getElementById(buttonId);
+    if (button) button.disabled = !isEnabled;
+  });
 
-  console.log("Create button state updated. Enabled:", isEnabled);
+  console.log("Document download options enabled:", isEnabled);
   console.log("Selected images count:", state.selectedImages.length);
 };
 
@@ -827,6 +962,75 @@ export const rotateImage = async (degrees) => {
   console.log(
     `Image rotated by ${degrees} degrees. New rotation: ${newRotation}`,
   );
+  notifyProjectChanged();
+};
+
+export const replaceImageCollection = async (records) => {
+  const hydratedRecords = [];
+
+  try {
+    for (const record of records) {
+      if (!(record.blob instanceof Blob)) {
+        throw new Error("專案包含無效的圖片資料");
+      }
+
+      const sourceUrl = createObjectUrl(record.blob);
+      try {
+        const { width, height } = await getImageDimensions(sourceUrl);
+        if (
+          !width ||
+          !height ||
+          width > IMAGE_SECURITY_LIMITS.maxDimension ||
+          height > IMAGE_SECURITY_LIMITS.maxDimension ||
+          width * height > IMAGE_SECURITY_LIMITS.maxPixels
+        ) {
+          throw new Error("專案圖片尺寸超過安全限制");
+        }
+
+        const previewUrl = await createThumbnail(sourceUrl);
+        hydratedRecords.push({
+          ...record,
+          width,
+          height,
+          size: record.blob.size,
+          previewUrl,
+        });
+      } finally {
+        revokeObjectUrl(sourceUrl);
+      }
+    }
+  } catch (error) {
+    hydratedRecords.forEach((record) => revokeObjectUrl(record.previewUrl));
+    throw error;
+  }
+
+  state.selectedImages.forEach((record) => revokeObjectUrl(record.previewUrl));
+  state.selectedImages = hydratedRecords;
+  state.editingImageId = null;
+  state.imageDescriptions = {};
+  state.imageDates = {};
+  state.imageAddresses = {};
+  state.imageAccidentTags = {};
+  state.imageRotations = {};
+
+  hydratedRecords.forEach((record) => {
+    state.imageDescriptions[record.id] = record.description || "";
+    state.imageDates[record.id] = record.customDate || "";
+    state.imageAddresses[record.id] = record.address || "";
+    state.imageAccidentTags[record.id] = record.accidentTags || {};
+    state.imageRotations[record.id] = record.rotation || 0;
+  });
+
+  const preview = document.getElementById("imagePreview");
+  preview.replaceChildren();
+  hydratedRecords.forEach((record, index) => addImageToPreview(record, index + 1));
+  state.imageCounter = hydratedRecords.length;
+  updateEditToolsState(false);
+  updateCreateButtonState();
+
+  if (!hydratedRecords.length) {
+    showEmptyState();
+  }
 };
 
 const rotateImageData = async (blob, degrees) => {
