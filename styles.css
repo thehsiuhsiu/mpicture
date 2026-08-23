@@ -421,7 +421,16 @@ html[data-theme="dark"] .edit-tools-container {
 
 .font-preview-kai,
 .pdf-font-trigger.font-preview-kai {
-  font-family: "DFKai-SB", "標楷體", "KaiTi", serif;
+  font-family:
+    "BiauKaiTC",
+    "BiauKai TC",
+    "Kaiti TC",
+    "Kai",
+    "BiauKai",
+    "DFKai-SB",
+    "標楷體",
+    "KaiTi",
+    serif;
 }
 
 .font-preview-noto-serif,

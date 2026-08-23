@@ -24,4 +24,4 @@ https://openfontlicense.org/open-font-license-official-text/
 
 ## System Fonts
 
-The PDF font menu may also expose system fallback fonts such as DFKai-SB / 標楷體 when available on the user's device. System fonts are not bundled with this project and are governed by the user's operating system or font provider license.
+The PDF font menu may also expose system fallback fonts such as BiauKaiTC / Kaiti TC on macOS and DFKai-SB / 標楷體 on Windows when available on the user's device. System fonts are not bundled with this project and are governed by the user's operating system or font provider license.
