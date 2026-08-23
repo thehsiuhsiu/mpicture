@@ -52,7 +52,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-    <link rel="stylesheet" href="styles.css?v=20260820-2" />
+    <link rel="stylesheet" href="styles.css?v=20260823-7" />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap"
       rel="stylesheet"
@@ -80,7 +80,12 @@
           <span class="material-symbols-outlined">help</span>
         </button>
         <div class="download-dropdown">
-          <button id="generate" class="create-btn create-btn-disabled">
+          <button
+            id="generate"
+            class="create-btn create-btn-enabled"
+            title="下載與匯出"
+            aria-label="下載與匯出"
+          >
             <span class="material-symbols-outlined">file_save</span>
           </button>
           <div class="download-menu" id="downloadMenu">
@@ -214,6 +219,14 @@
               >
               <span>打包照片</span>
             </button>
+            <button
+              type="button"
+              class="download-option"
+              id="exportProjectBtn"
+            >
+              <span class="material-symbols-outlined">lock</span>
+              <span>匯出加密專案</span>
+            </button>
           </div>
         </div>
       </div>
@@ -231,6 +244,7 @@
           type="text"
           id="docTitleLeft"
           class="sidebar-input"
+          maxlength="120"
           placeholder="照片黏貼表"
           value="照片黏貼表"
         />
@@ -241,6 +255,7 @@
           type="text"
           id="docTitleMiddle"
           class="sidebar-input"
+          maxlength="120"
           placeholder="照片黏貼表"
           value="照片黏貼表"
         />
@@ -251,6 +266,7 @@
           type="text"
           id="zipPrefix"
           class="sidebar-input"
+          maxlength="200"
           placeholder="〇〇案"
         />
       </div>
@@ -260,6 +276,7 @@
           type="text"
           id="caseUni"
           class="sidebar-input"
+          maxlength="200"
           placeholder="公園前派出所"
         />
       </div>
@@ -277,6 +294,7 @@
           type="text"
           id="caseDate"
           class="sidebar-input"
+          maxlength="80"
           placeholder="115/05/16 09:18"
         />
       </div>
@@ -287,6 +305,7 @@
           type="text"
           id="caseAddress"
           class="sidebar-input"
+          maxlength="500"
           placeholder="東京都葛飾區龜有3丁目32番17號"
         />
       </div>
@@ -297,6 +316,7 @@
           type="text"
           id="caseNumber"
           class="sidebar-input"
+          maxlength="200"
           placeholder="〇〇〇"
         />
       </div>
@@ -336,7 +356,7 @@
             <span class="material-symbols-outlined">add</span>
           </button>
         </div>
-        <div class="edit-tools-container">
+        <div class="edit-tools-container" aria-label="照片旋轉">
           <button
             type="button"
             id="rotateLeftBtn"
@@ -354,6 +374,27 @@
             disabled
           >
             <span class="material-symbols-outlined">rotate_right</span>
+          </button>
+        </div>
+        <div
+          class="project-toolbar preview-project-toolbar"
+          aria-label="專案管理"
+        >
+          <span
+            id="projectSaveStatus"
+            class="project-save-status"
+            data-status="idle"
+            role="status"
+            aria-live="polite"
+          >草稿準備中</span>
+          <button
+            type="button"
+            id="clearProjectBtn"
+            class="project-tool-btn project-clear-btn"
+            title="清除目前專案與本機草稿"
+            aria-label="清除目前專案與本機草稿"
+          >
+            <span class="material-symbols-outlined">delete_sweep</span>
           </button>
         </div>
       </div>
@@ -443,8 +484,16 @@
           class="photo-source-option"
           id="localPhotoSourceBtn"
         >
-          <span class="material-symbols-outlined">folder_open</span>
+          <span class="material-symbols-outlined">add_photo_alternate</span>
           <span>本機照片</span>
+        </button>
+        <button
+          type="button"
+          class="photo-source-option"
+          id="openProjectBtn"
+        >
+          <span class="material-symbols-outlined">folder_open</span>
+          <span>開啟專案</span>
         </button>
         <button
           type="button"
@@ -465,11 +514,148 @@
       type="file"
       id="imageInput"
       multiple
-      accept="image/*,.heic,.HEIC"
+      accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/tiff,image/avif,.heic,.HEIC,.heif,.HEIF"
       style="display: none"
     />
+    <input
+      type="file"
+      id="projectFileInput"
+      accept=".mpicture,application/octet-stream"
+      hidden
+    />
 
-    <script type="module" src="js/main.js?v=20260820-2"></script>
+    <div
+      id="projectPasswordModal"
+      class="modal info-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="projectPasswordTitle"
+    >
+      <div class="project-dialog-content">
+        <button
+          type="button"
+          class="info-modal-close"
+          id="projectPasswordCloseBtn"
+          aria-label="關閉"
+        >
+          <span class="material-symbols-outlined">close</span>
+        </button>
+        <h2 id="projectPasswordTitle">匯出加密專案</h2>
+        <p id="projectPasswordDescription"></p>
+        <label class="project-password-label" for="projectPasswordInput"
+          >專案密碼</label
+        >
+        <div class="project-password-field">
+          <input
+            type="password"
+            id="projectPasswordInput"
+            class="project-password-input"
+            maxlength="128"
+            autocomplete="new-password"
+            spellcheck="false"
+          />
+          <button
+            type="button"
+            class="project-password-toggle"
+            id="projectPasswordToggleBtn"
+            aria-label="顯示專案密碼"
+            aria-pressed="false"
+            title="顯示專案密碼"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+          </button>
+        </div>
+        <div id="projectPasswordConfirmGroup">
+          <label
+            class="project-password-label"
+            for="projectPasswordConfirmInput"
+            >再次輸入密碼</label
+          >
+          <div class="project-password-field">
+            <input
+              type="password"
+              id="projectPasswordConfirmInput"
+              class="project-password-input"
+              maxlength="128"
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+            <button
+              type="button"
+              class="project-password-toggle"
+              id="projectPasswordConfirmToggleBtn"
+              aria-label="顯示確認密碼"
+              aria-pressed="false"
+              title="顯示確認密碼"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+            </button>
+          </div>
+        </div>
+        <p
+          id="projectPasswordError"
+          class="project-password-error"
+          role="alert"
+        ></p>
+        <div class="project-dialog-actions">
+          <button
+            type="button"
+            class="project-dialog-secondary"
+            id="projectPasswordCancelBtn"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="project-dialog-primary"
+            id="projectPasswordSubmitBtn"
+          >
+            確認
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="projectRestoreModal"
+      class="modal info-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="projectRestoreTitle"
+    >
+      <div class="project-dialog-content">
+        <h2 id="projectRestoreTitle">發現未完成的專案</h2>
+        <p id="projectRestoreSummary"></p>
+        <p>草稿只儲存在這台裝置的目前瀏覽器中。</p>
+        <div class="project-dialog-actions">
+          <button
+            type="button"
+            class="project-dialog-secondary project-discard-btn"
+            id="projectDiscardBtn"
+          >
+            捨棄草稿
+          </button>
+          <button
+            type="button"
+            class="project-dialog-primary"
+            id="projectRestoreBtn"
+          >
+            繼續編輯
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="projectBusyModal" class="modal" aria-live="polite">
+      <div class="modal-content">
+        <p id="projectBusyMessage">處理專案中…</p>
+        <div class="loader"></div>
+      </div>
+    </div>
+
+    <script type="module" src="js/main.js?v=20260823-7"></script>
 
     <footer>
       <h3>Copyright© 2024 M-Picture. All rights reserved.</h3>
@@ -548,30 +734,31 @@
         <section>
           <h3>隱私權聲明</h3>
           <p>
-            本網頁不提供伺服器端照片儲存，照片處理在使用者瀏覽器本機完成。Google
-            access token 只暫存在瀏覽器記憶體中，不會寫入
-            localStorage、sessionStorage、IndexedDB、Cookie 或任何伺服器。
+            本網頁不提供伺服器端照片儲存，照片處理在使用者瀏覽器本機完成。為協助使用者繼續未完成的工作，專案草稿會自動儲存在目前瀏覽器中，自最後一次自動儲存起保留 2 小時；再次開啟網站時會檢查並清除過期草稿，使用者也可隨時手動清除。Google 相簿匯入功能目前未對外公開，僅供測試人員手動選取照片進行測試使用。
+          </p>
+          <p>
+            使用者匯出的 M-Picture 專案檔會以使用者設定的密碼加密；密碼不會儲存或上傳，遺失後無法復原。
           </p>
         </section>
 
         <section>
           <h3>Google 相簿匯入</h3>
           <p>
-            從 Google 相簿匯入時，只會透過 Google Photos Picker
-            讓使用者手動選取照片。本網頁不會掃描整個相簿，也不會主動上傳照片。
+            Google
+            相簿匯入功能目前未對外公開，僅供測試人員手動選取照片進行測試使用。本網頁不會掃描整個相簿，也不會主動上傳照片。
           </p>
         </section>
 
         <section>
           <h3>第三方字型授權</h3>
           <p>
-            本工具使用之 Noto Sans TC、Noto Serif TC、jf open
-            粉圓、芫荽、源流明體與辰宇落雁體等開源字型，依各字型原始授權條款提供，主要為
-            SIL Open Font License
-            1.1。上述字型可用於個人與商業用途，但不得將字型檔案本身單獨販售。
+            本工具提供 Noto Sans TC、Noto Serif TC、jf open
+            粉圓、芫荽、源流明體、辰宇落雁體等第三方開源字型，供使用者於產生 PDF
+            或相關輸出內容時選用。各字型仍依其原始授權條款提供，主要採用 SIL
+            Open Font License 1.1。
           </p>
           <p>
-            若本工具與字型檔一併散布，應保留專案內的第三方授權說明與各字型原始授權資訊。
+            使用者可依授權條款將上述字型用於個人或商業作品；但不得將字型檔案本身單獨販售。若散布本工具或隨附字型檔，應一併保留第三方授權說明、原始著作權資訊與授權文件。
           </p>
         </section>
 
@@ -609,7 +796,7 @@
           <span class="material-symbols-outlined">close</span>
         </button>
         <h2 id="privacyModalTitle">M-Picture 隱私權政策</h2>
-        <p class="privacy-updated">最後更新：2026-08-19</p>
+        <p class="privacy-updated">最後更新：2026-08-23</p>
 
         <section>
           <h3>資料處理原則</h3>
@@ -622,17 +809,8 @@
         <section>
           <h3>Google 帳戶與 Google 相簿</h3>
           <p>
-            當使用者選擇從 Google 相簿匯入照片時，本網站會透過 Google
-            官方授權流程取得必要權限，並只使用 Google Photos Picker
-            讓使用者手動選取照片。本網站不會掃描整個相簿。
-          </p>
-        </section>
-
-        <section>
-          <h3>Access Token</h3>
-          <p>
-            Google access token 只暫存在瀏覽器記憶體中，不會寫入
-            localStorage、sessionStorage、IndexedDB、Cookie 或任何伺服器。
+            Google
+            相簿匯入功能目前未對外公開，僅供測試人員手動選取照片進行測試使用。本網站不會掃描整個相簿。
           </p>
         </section>
 
@@ -645,15 +823,28 @@
         </section>
 
         <section>
+          <h3>本機專案草稿</h3>
+          <p>
+            為協助使用者繼續未完成的工作，本網站會將專案欄位、設定與照片草稿儲存在目前裝置的瀏覽器中。草稿自最後一次自動儲存起保留 2 小時；再次開啟本網站時，系統會檢查並清除已過期的草稿。網站關閉期間無法主動執行刪除，因此過期資料可能由瀏覽器保留至再次開啟本網站或手動清除網站資料為止。草稿不會上傳至伺服器，使用者可隨時透過「清除目前專案」移除草稿。清除瀏覽器網站資料、使用無痕模式、變更瀏覽器或裝置後，草稿可能無法復原。
+          </p>
+        </section>
+
+        <section>
+          <h3>加密專案檔</h3>
+          <p>
+            使用者主動匯出的 M-Picture 專案檔會以使用者設定的密碼加密。密碼只用於目前瀏覽器中的加密或解密操作，不會由本網站儲存或上傳；密碼遺失後無法復原專案檔。
+          </p>
+        </section>
+
+        <section>
           <h3>第三方字型與授權</h3>
           <p>
             本網站提供 PDF
-            字型選擇功能，部分字型檔隨本工具一併提供。這些字型依其原始開源授權條款使用，主要為
-            SIL Open Font License
-            1.1，可用於個人與商業用途，但不得將字型檔案本身單獨販售。
+            字型選擇功能，部分字型檔隨本工具一併提供。這些字型屬第三方開源字型，依各字型原始授權條款使用，主要採用
+            SIL Open Font License 1.1。
           </p>
           <p>
-            字型授權資訊屬第三方授權聲明，不涉及個人資料蒐集或隱私資料處理。
+            使用者可依授權條款將字型用於個人或商業輸出作品；但不得將字型檔案本身單獨販售。字型授權資訊屬第三方授權聲明，不涉及個人資料蒐集或隱私資料處理。
           </p>
         </section>
 
@@ -688,7 +879,7 @@
           <h3>如何新增照片？</h3>
           <p>
             點右下角「＋」按鈕，選擇「本機照片」可從裝置選取圖片；選擇「Google
-            相簿」會開啟 Google 授權與相簿選取流程。
+            相簿」會開啟測試中的 Google 授權與相簿選取流程，目前僅限測試人員使用。
           </p>
         </section>
 
@@ -714,9 +905,30 @@
         </section>
 
         <section>
-          <h3>Google 相簿匯入會上傳照片嗎？</h3>
+          <h3>Google 相簿匯入功能目前開放使用嗎？</h3>
           <p>
-            不會。照片只會匯入到目前瀏覽器中處理，不會上傳到本網站伺服器。本網站沒有伺服器端照片儲存。
+            尚未對外公開，目前僅供測試人員測試使用。測試期間，使用者手動選取的照片只會匯入目前瀏覽器中處理，不會上傳到本網站伺服器；本網站也不會掃描整個相簿。
+          </p>
+        </section>
+
+        <section>
+          <h3>離開網頁後可以繼續編輯嗎？</h3>
+          <p>
+            可以。變更會自動儲存在目前瀏覽器中，並自最後一次自動儲存起保留 2 小時。請在期限內重新開啟網頁並選擇繼續編輯；超過期限的草稿會在再次開啟網站時清除。若需要保存更久，請從右上角下載選單匯出加密專案檔。
+          </p>
+        </section>
+
+        <section>
+          <h3>為什麼顯示「儲存失敗」？</h3>
+          <p>
+            可能原因包括裝置或瀏覽器儲存空間不足、瀏覽器停用或限制網站資料、使用無痕或私密瀏覽模式、其他分頁暫時占用草稿資料庫，或瀏覽器不支援本機草稿功能。請先關閉本網站的其他分頁、確認瀏覽器允許儲存網站資料並釋放空間，再重新整理網頁。若仍無法儲存，請立即從右上角下載選單匯出加密專案檔，以免資料遺失。
+          </p>
+        </section>
+
+        <section>
+          <h3>忘記專案檔密碼怎麼辦？</h3>
+          <p>
+            專案密碼不會由本網站保存，因此無法重設或找回。匯出後請將專案檔與密碼分開妥善保管。
           </p>
         </section>
 

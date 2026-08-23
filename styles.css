@@ -205,7 +205,7 @@ html[data-theme="dark"] .toolbar-divider {
   background: rgba(128, 128, 128, 0.6);
 }
 
-/* 深色模式下的編輯工具容器分隔線 */
+/* 深色模式下的縮放與旋轉控制分隔線 */
 html[data-theme="dark"] .edit-tools-container {
   border-left: 1px solid rgba(128, 128, 128, 0.6);
 }
@@ -559,6 +559,79 @@ html[data-theme="dark"] .edit-tools-container {
   flex-wrap: nowrap;
 }
 
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-project-toolbar {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.project-save-status {
+  min-width: 92px;
+  color: var(--sidebar-label);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.project-save-status[data-status="saved"] {
+  color: #16803a;
+}
+
+.project-save-status[data-status="saving"],
+.project-save-status[data-status="pending"] {
+  color: #9a6500;
+}
+
+.project-save-status[data-status="error"] {
+  color: var(--danger-text);
+}
+
+html[data-theme="dark"] .project-save-status[data-status="saved"] {
+  color: #6fd78d;
+}
+
+html[data-theme="dark"] .project-save-status[data-status="saving"],
+html[data-theme="dark"] .project-save-status[data-status="pending"] {
+  color: #ffd166;
+}
+
+.project-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-label);
+  cursor: pointer;
+}
+
+.project-tool-btn:hover,
+.project-tool-btn:focus-visible {
+  background: var(--input-bg);
+  color: var(--link-primary);
+  outline: none;
+}
+
+.project-clear-btn:hover,
+.project-clear-btn:focus-visible {
+  color: var(--danger-text);
+}
+
+.project-tool-btn .material-symbols-outlined {
+  font-size: 22px;
+}
+
 .google-controls {
   display: flex;
   align-items: center;
@@ -696,7 +769,7 @@ html[data-theme="dark"] .edit-tools-container {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-right: 8px;
+  margin-right: 0;
 }
 
 .size-btn {
@@ -1253,6 +1326,15 @@ body.format-middle .image-address-input {
 
 .download-option:hover {
   background: var(--input-bg);
+}
+
+.download-option:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.download-option:disabled:hover {
+  background: transparent;
 }
 
 .download-option:first-child {
@@ -1846,12 +1928,39 @@ input:checked + .slider:before {
   width: min(680px, calc(100vw - 36px));
   max-height: min(82vh, 720px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  -webkit-overflow-scrolling: touch;
   padding: 30px 34px;
   background: var(--modal-content-bg);
   border-radius: 12px;
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.3);
   color: var(--modal-content-text);
   text-align: left;
+}
+
+.consent-modal-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.consent-modal-content::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+  margin: 14px 0;
+}
+
+.consent-modal-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.consent-modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .consent-modal-content h2 {
@@ -1927,12 +2036,39 @@ input:checked + .slider:before {
   width: min(720px, calc(100vw - 36px));
   max-height: min(78vh, 720px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  -webkit-overflow-scrolling: touch;
   padding: 28px 32px;
   background: var(--modal-content-bg);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
   color: var(--modal-content-text);
   text-align: left;
+}
+
+.privacy-modal-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.privacy-modal-content::-webkit-scrollbar-track {
+  margin: 12px 0;
+  background: transparent;
+}
+
+.privacy-modal-content::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+.privacy-modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .privacy-modal-content h2 {
@@ -2176,12 +2312,168 @@ input:checked + .slider:before {
   background: var(--btn-hover-bg);
 }
 
-/* 編輯工具容器 - 位於圖片顯示區右上角 */
+.project-dialog-content {
+  position: relative;
+  width: min(460px, calc(100vw - 36px));
+  box-sizing: border-box;
+  padding: 28px 30px 24px;
+  border-radius: 8px;
+  background: var(--modal-content-bg);
+  color: var(--modal-content-text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+.project-dialog-content h2 {
+  margin: 0 42px 8px 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.project-dialog-content p {
+  margin: 0 0 14px;
+  color: var(--sidebar-label);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.project-password-label {
+  display: block;
+  margin: 14px 0 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-password-field {
+  position: relative;
+}
+
+.project-password-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 46px 11px 12px;
+  border: 1px solid var(--btn-disabled-bg);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  font: inherit;
+  outline: none;
+}
+
+.project-password-input:focus {
+  border-color: var(--toggle-slider);
+  background: var(--input-bg-focus);
+  box-shadow: 0 0 0 2px var(--input-focus-shadow);
+}
+
+.project-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: flex;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sidebar-label);
+  cursor: pointer;
+}
+
+.project-password-toggle:hover {
+  background: var(--input-bg-focus);
+  color: var(--text-primary);
+}
+
+.project-password-toggle:focus-visible {
+  outline: 2px solid var(--toggle-slider);
+  outline-offset: -2px;
+}
+
+.project-password-toggle .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.project-dialog-content .project-password-error {
+  min-height: 21px;
+  margin: 8px 0 0;
+  color: var(--danger-text);
+  font-size: 12px;
+}
+
+.project-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.project-dialog-primary,
+.project-dialog-secondary {
+  min-width: 96px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-dialog-primary {
+  border: 1px solid var(--link-primary);
+  background: var(--link-primary);
+  color: #ffffff;
+}
+
+.project-dialog-secondary {
+  border: 1px solid var(--btn-disabled-bg);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.project-discard-btn {
+  color: var(--danger-text);
+}
+
+#projectBusyModal {
+  z-index: 12000;
+}
+
+#projectPasswordModal,
+#projectRestoreModal {
+  z-index: 11000;
+}
+
+@media (max-width: 860px) {
+  .project-save-status {
+    display: none;
+  }
+
+  .zip-controls {
+    gap: 6px;
+  }
+
+  .project-toolbar {
+    gap: 2px;
+  }
+
+  .project-tool-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* 照片旋轉控制 - 緊鄰預覽縮放滑桿 */
 .edit-tools-container {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
+  flex-shrink: 0;
+  gap: 6px;
+  margin-left: 8px;
   padding-left: 16px;
   border-left: 1px solid var(--shadow-secondary);
 }
@@ -2219,6 +2511,29 @@ input:checked + .slider:before {
 
 .edit-tool-btn .material-symbols-outlined {
   font-size: 22px;
+}
+
+@media (max-width: 860px) {
+  .view-switch-container {
+    gap: 4px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .toolbar-divider {
+    margin-right: 4px;
+    margin-left: 4px;
+  }
+
+  .edit-tools-container {
+    gap: 4px;
+    margin-left: 4px;
+    padding-left: 8px;
+  }
+
+  .preview-project-toolbar {
+    padding-left: 4px;
+  }
 }
 
 /* 編輯中的圖片樣式 - 藍色框框 */
