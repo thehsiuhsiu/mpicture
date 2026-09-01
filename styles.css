@@ -1260,6 +1260,19 @@ html[data-theme="dark"] .project-save-status[data-status="pending"] {
   -webkit-line-clamp: 1;
 }
 
+.document-multi-grid-2 .document-multi-caption {
+  height: auto;
+  min-height: 34px;
+  max-height: 52px;
+}
+
+.document-multi-grid-2 .document-multi-description {
+  max-height: 52px;
+  line-height: 21.6px;
+  white-space: pre-wrap;
+  -webkit-line-clamp: 2;
+}
+
 .document-multi-cell-empty {
   background: rgba(0, 0, 0, 0.015);
 }
