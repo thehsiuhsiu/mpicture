@@ -235,8 +235,13 @@ export const getFormattedDate = () => {
 // ============ Modal 控制函數 ============
 
 let uploadingModalShowTime = 0;
+let uploadingModalHideTimer = null;
 
 export const showUploadingModal = () => {
+  if (uploadingModalHideTimer !== null) {
+    clearTimeout(uploadingModalHideTimer);
+    uploadingModalHideTimer = null;
+  }
   document.getElementById("uploadingModal").style.display = "block";
   uploadingModalShowTime = Date.now();
 };
@@ -245,8 +250,9 @@ export const hideUploadingModal = () => {
   const elapsed = Date.now() - uploadingModalShowTime;
   const minDuration = 500;
   if (elapsed < minDuration) {
-    setTimeout(() => {
+    uploadingModalHideTimer = setTimeout(() => {
       document.getElementById("uploadingModal").style.display = "none";
+      uploadingModalHideTimer = null;
     }, minDuration - elapsed);
   } else {
     document.getElementById("uploadingModal").style.display = "none";

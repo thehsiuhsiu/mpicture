@@ -10,16 +10,32 @@ import {
   rotateImage,
   processFiles,
   replaceImageCollection,
+  INTERNAL_IMAGE_DRAG_TYPE,
+  showMissingExifDateWarning,
+  confirmMissingDatesBeforeExport,
+  updateExifDateWarnings,
+  refreshDisplayedPhotoNumbers,
 } from "./imageHandler.js";
-import { handleGenerateWrapper } from "./docxGenerator.js?v=20260823-8";
-import { handleGeneratePDF } from "./pdfGenerator.js?v=20260823-8";
+import { handleGenerateWrapper } from "./docxGenerator.js?v=20260901-12";
+import { handleGeneratePDF } from "./pdfGenerator.js?v=20260901-12";
 import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
 import { initGooglePhotosImport } from "./googlePhotos.js";
 import {
   initProjectPersistence,
   shouldWarnBeforeUnload,
-} from "./projectPersistence.js?v=20260823-7";
+} from "./projectPersistence.js?v=20260901-12";
 import { notifyProjectChanged } from "./projectEvents.js";
+import { initDocumentPreview } from "./documentPreview.js?v=20260901-12";
+import {
+  getPhotoNumber,
+  normalizePhotoStartNumber,
+  updatePhotoNumberingWarning,
+} from "./photoNumbering.js";
+import { initLongScreenshotSplitter } from "./longScreenshotSplitter.js?v=20260901-15";
+import {
+  confirmSplitOrderBeforeExport,
+  initSplitOrderManager,
+} from "./splitOrderManager.js";
 
 const initEmptyState = () => {
   const imagePreview = document.getElementById("imagePreview");
@@ -160,7 +176,7 @@ const downloadImagesAsZip = async ({ zipFileName, photoFileName }) => {
       const img = state.selectedImages[i];
       const ext = img.name.split(".").pop();
       const basePhotoName = sanitizeZipFileName(photoFileName || prefix);
-      const newName = `${basePhotoName}-編號${i + 1}.${ext}`;
+      const newName = `${basePhotoName}-編號${getPhotoNumber(i)}.${ext}`;
       zip.file(newName, img.blob);
     }
     const content = await zip.generateAsync({ type: "blob" });
@@ -198,10 +214,19 @@ const updateToggleState = (value) => {
   document.body.classList.add(`format-${value}`);
 
   updateSidebarFields(value);
+  updateCreateButtonState();
+  updateExifDateWarnings();
   notifyProjectChanged();
 };
 
 const applyProjectSnapshot = async (project) => {
+  const restoredStartNumber = normalizePhotoStartNumber(
+    project.settings.photoStartNumber ?? 1,
+  );
+  state.photoStartNumber = restoredStartNumber;
+  const startNumberInput = document.getElementById("photoStartNumber");
+  if (startNumberInput) startNumberInput.value = String(restoredStartNumber);
+
   const restoredImages = project.images.map((image, index) => ({
     id: Date.now() + index + Math.random(),
     blob: image.blob,
@@ -215,6 +240,12 @@ const applyProjectSnapshot = async (project) => {
     description: image.description,
     accidentTags: image.accidentTags,
     rotation: image.rotation,
+    importBatchId: image.importBatchId || "",
+    originalImportIndex: image.originalImportIndex,
+    splitGroupId: image.splitGroupId || "",
+    splitPartIndex: image.splitPartIndex,
+    splitPartCount: image.splitPartCount,
+    sourceFileName: image.sourceFileName || "",
     duplicateSignature: [
       image.name.trim().toLowerCase(),
       image.size,
@@ -224,6 +255,8 @@ const applyProjectSnapshot = async (project) => {
   }));
 
   await replaceImageCollection(restoredImages);
+  refreshDisplayedPhotoNumbers();
+  updatePhotoNumberingWarning();
 
   const fieldValues = {
     zipPrefix: project.fields.zipPrefix,
@@ -233,6 +266,7 @@ const applyProjectSnapshot = async (project) => {
     caseNumber: project.fields.caseNumber,
     docTitleLeft: project.titles.left,
     docTitleMiddle: project.titles.middle,
+    docTitleRight: project.titles.right,
   };
   Object.entries(fieldValues).forEach(([id, value]) => {
     const element = document.getElementById(id);
@@ -241,6 +275,17 @@ const applyProjectSnapshot = async (project) => {
 
   state.customDocTitles.left = project.titles.left;
   state.customDocTitles.middle = project.titles.middle;
+  state.customDocTitles.right = project.titles.right;
+
+  const multiPhotoCount = document.querySelector(
+    `input[name="multiPhotoCount"][value="${project.settings.multiPhotoCount}"]`,
+  );
+  const multiPhotoOrder = document.querySelector(
+    `input[name="multiPhotoOrder"][value="${project.settings.multiPhotoOrder}"]`,
+  );
+  if (multiPhotoCount) multiPhotoCount.checked = true;
+  if (multiPhotoOrder) multiPhotoOrder.checked = true;
+  multiPhotoCount?.dispatchEvent(new Event("change", { bubbles: true }));
   updateToggleState(project.settings.selectedFormat);
   handleViewModeChange(project.settings.viewMode);
 
@@ -287,6 +332,7 @@ const updateSidebarFields = (format) => {
 const initDocumentTitles = () => {
   const docTitleLeft = document.getElementById("docTitleLeft");
   const docTitleMiddle = document.getElementById("docTitleMiddle");
+  const docTitleRight = document.getElementById("docTitleRight");
 
   if (docTitleLeft) {
     state.customDocTitles.left = docTitleLeft.value.trim();
@@ -305,6 +351,57 @@ const initDocumentTitles = () => {
       state.customDocTitles.middle = newTitle;
     });
   }
+
+  if (docTitleRight) {
+    state.customDocTitles.right = docTitleRight.value.trim();
+
+    docTitleRight.addEventListener("input", (e) => {
+      state.customDocTitles.right = e.target.value.trim();
+    });
+  }
+};
+
+const setupMultiPhotoSettings = () => {
+  const countInputs = Array.from(
+    document.querySelectorAll('input[name="multiPhotoCount"]'),
+  );
+  const settingInputs = document.querySelectorAll(".multi-layout-input");
+  const orderGroup = document.getElementById("multiPhotoOrderGroup");
+
+  const updateOrderVisibility = () => {
+    const selectedCount = document.querySelector(
+      'input[name="multiPhotoCount"]:checked',
+    )?.value;
+    if (orderGroup) orderGroup.hidden = selectedCount !== "4";
+  };
+
+  countInputs.forEach((input) => {
+    input.addEventListener("change", updateOrderVisibility);
+  });
+  settingInputs.forEach((input) => {
+    input.addEventListener("change", notifyProjectChanged);
+  });
+  updateOrderVisibility();
+};
+
+const setupPhotoNumbering = () => {
+  const input = document.getElementById("photoStartNumber");
+  if (!input) return;
+
+  const applyNumbering = (commitValue = false) => {
+    const normalized = normalizePhotoStartNumber(input.value);
+    state.photoStartNumber = normalized;
+    if (commitValue) input.value = String(normalized);
+    refreshDisplayedPhotoNumbers();
+    updatePhotoNumberingWarning();
+    notifyProjectChanged();
+  };
+
+  input.addEventListener("input", () => applyNumbering(false));
+  input.addEventListener("change", () => applyNumbering(true));
+  input.addEventListener("blur", () => applyNumbering(true));
+  state.photoStartNumber = normalizePhotoStartNumber(input.value);
+  updatePhotoNumberingWarning();
 };
 
 const init = () => {
@@ -340,15 +437,23 @@ const init = () => {
     downloadMenu.classList.toggle("show");
   });
 
-  downloadDocx.addEventListener("click", (e) => {
+  downloadDocx.addEventListener("click", async (e) => {
     e.stopPropagation();
     downloadMenu.classList.remove("show");
+    if (state.selectedFormat === "right") {
+      showToast("多格照片檔案限定列印/PDF", "warning");
+      return;
+    }
+    if (!(await confirmSplitOrderBeforeExport())) return;
+    if (!confirmMissingDatesBeforeExport()) return;
     handleGenerateWrapper(e);
   });
 
-  downloadPdf.addEventListener("click", (e) => {
+  downloadPdf.addEventListener("click", async (e) => {
     e.stopPropagation();
     downloadMenu.classList.remove("show");
+    if (!(await confirmSplitOrderBeforeExport())) return;
+    if (!confirmMissingDatesBeforeExport()) return;
     handleGeneratePDF();
   });
 
@@ -362,6 +467,8 @@ const init = () => {
       );
       return;
     }
+
+    if (!(await confirmSplitOrderBeforeExport())) return;
 
     const zipNames = await requestZipDownloadNames();
     if (!zipNames) return;
@@ -388,9 +495,13 @@ const init = () => {
 
   const gridViewBtn = document.getElementById("gridViewBtn");
   const listViewBtn = document.getElementById("listViewBtn");
-  if (gridViewBtn && listViewBtn) {
+  const documentPreviewBtn = document.getElementById("documentPreviewBtn");
+  if (gridViewBtn && listViewBtn && documentPreviewBtn) {
     gridViewBtn.addEventListener("click", () => handleViewModeChange("grid"));
     listViewBtn.addEventListener("click", () => handleViewModeChange("list"));
+    documentPreviewBtn.addEventListener("click", () =>
+      handleViewModeChange("preview"),
+    );
   }
 
   console.log("圖片管理腳本初始化完成");
@@ -411,6 +522,8 @@ const setupEventListeners = () => {
 
   imagePreview.addEventListener("click", handleImageClick);
 
+  setupPhotoFileDrop();
+
   window.addEventListener("error", (event) => {
     const target = event.target;
     const isResourceError =
@@ -428,6 +541,90 @@ const setupEventListeners = () => {
     alert(
       "發生了意外錯誤。請重新加載頁面並重試。如果問題持續存在，請聯繫維護者。",
     );
+  });
+};
+
+const isPhotoFileDrag = (event) => {
+  const dragTypes = Array.from(event.dataTransfer?.types || []);
+  return (
+    dragTypes.includes("Files") &&
+    !dragTypes.includes(INTERNAL_IMAGE_DRAG_TYPE)
+  );
+};
+
+const setupPhotoFileDrop = () => {
+  const overlay = document.getElementById("photoDropOverlay");
+  const dropZone = overlay?.closest(".container");
+
+  const isInsideDropZone = (event) =>
+    event.target instanceof Element && dropZone?.contains(event.target);
+
+  const setDropIndicator = (visible) => {
+    if (visible && dropZone && overlay) {
+      const bounds = dropZone.getBoundingClientRect();
+      overlay.style.left = `${bounds.left}px`;
+      overlay.style.top = `${bounds.top}px`;
+      overlay.style.width = `${bounds.width}px`;
+      overlay.style.height = `${bounds.height}px`;
+    }
+    overlay?.classList.toggle("is-visible", visible);
+    overlay?.setAttribute("aria-hidden", String(!visible));
+  };
+
+  document.addEventListener(
+    "dragenter",
+    (event) => {
+      if (!isPhotoFileDrag(event)) return;
+      event.preventDefault();
+      setDropIndicator(Boolean(isInsideDropZone(event)));
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "dragover",
+    (event) => {
+      if (!isPhotoFileDrag(event)) return;
+      event.preventDefault();
+      const canDrop = Boolean(isInsideDropZone(event));
+      setDropIndicator(canDrop);
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = canDrop ? "copy" : "none";
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "dragleave",
+    (event) => {
+      if (!isPhotoFileDrag(event)) return;
+      const remainsInside =
+        event.relatedTarget instanceof Node &&
+        dropZone?.contains(event.relatedTarget);
+      if (!remainsInside) setDropIndicator(false);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "drop",
+    (event) => {
+      if (!isPhotoFileDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const canDrop = Boolean(isInsideDropZone(event));
+      setDropIndicator(false);
+
+      if (!canDrop) return;
+      const files = Array.from(event.dataTransfer?.files || []);
+      processFiles(files);
+    },
+    true,
+  );
+
+  window.addEventListener("blur", () => {
+    setDropIndicator(false);
   });
 };
 
@@ -512,9 +709,13 @@ const setupDateModeSwitch = () => {
       dateModeLabel.textContent = "Auto-fill EXIF";
       dateModeLabel.classList.add("disabled");
     }
+    updateExifDateWarnings();
   }
 
-  dateSwitch.addEventListener("change", setDateInputMode);
+  dateSwitch.addEventListener("change", () => {
+    setDateInputMode();
+    if (dateSwitch.checked) showMissingExifDateWarning();
+  });
   setDateInputMode();
 };
 
@@ -871,10 +1072,15 @@ document.addEventListener("DOMContentLoaded", () => {
   initEmptyState();
 
   init();
+  initDocumentPreview();
+  initLongScreenshotSplitter();
+  initSplitOrderManager();
   setupEventListeners();
   setupPhotoSizeSlider();
   setupSidebarInputs();
   setupDateModeSwitch();
+  setupMultiPhotoSettings();
+  setupPhotoNumbering();
   setupPdfFontPreview();
   setupBeforeUnload();
   setupResizeWarning();

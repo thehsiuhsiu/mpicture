@@ -8,6 +8,11 @@ import {
   hideLoadingModal,
   blobToArrayBuffer,
 } from "./utils.js";
+import {
+  getMultiPhotoPageEntries,
+  getMultiPhotoSettings,
+} from "./multiPhotoLayout.js";
+import { getPhotoNumber } from "./photoNumbering.js";
 
 const platformName =
   globalThis.navigator?.userAgentData?.platform ||
@@ -31,6 +36,11 @@ const sanitizeDownloadFileName = (fileName) => {
 export const handleGenerateWrapper = async (event) => {
   event.preventDefault();
   event.stopPropagation();
+
+  if (state.selectedFormat === "right") {
+    alert("多格照片檔案限定列印/PDF");
+    return;
+  }
 
   if (state.isGenerating) {
     console.log("Generation already in progress");
@@ -141,6 +151,10 @@ const createDocument = (docx, format, formData, images) => {
       title = state.customDocTitles.middle ?? "非道路交通事故照片黏貼紀錄表";
       createContent = createTrafficAccidentContent;
       break;
+    case "right":
+      title = state.customDocTitles.right ?? "照片黏貼表";
+      createContent = createMultiPhotoContent;
+      break;
     default:
       throw new Error("未知的文檔格式");
   }
@@ -210,7 +224,7 @@ const createImageTables = (docx, images, formData, isAutoDate, manualDate) => {
       ...createImageTable(
         docx,
         images[i],
-        i + 1,
+        getPhotoNumber(i),
         formData,
         isAutoDate,
         manualDate,
@@ -221,7 +235,7 @@ const createImageTables = (docx, images, formData, isAutoDate, manualDate) => {
         ...createImageTable(
           docx,
           images[i + 1],
-          i + 2,
+          getPhotoNumber(i + 1),
           formData,
           isAutoDate,
           manualDate,
@@ -447,7 +461,7 @@ const createTrafficAccidentContent = (
       createTrafficAccidentImageTable(
         docx,
         images[i],
-        i + 1,
+        getPhotoNumber(i),
         formData,
         isAutoDate,
         manualDate,
@@ -576,6 +590,131 @@ const createTrafficAccidentImageTable = (
       }),
     ],
   });
+};
+
+const fitMultiPhotoImage = (image, count) => {
+  const maxWidth = 250;
+  const maxHeight = count === 2 ? 610 : 300;
+  const width = Math.max(1, Number(image.width) || 1);
+  const height = Math.max(1, Number(image.height) || 1);
+  const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+};
+
+const createMultiPhotoCell = (docx, entry, count) => {
+  if (!entry) {
+    return new docx.TableCell({
+      children: [new docx.Paragraph({ text: "" })],
+      width: { size: 50, type: docx.WidthType.PERCENTAGE },
+      verticalAlign: docx.VerticalAlign.CENTER,
+    });
+  }
+
+  const imageSize = fitMultiPhotoImage(entry.image, count);
+  const description = entry.image.description || "";
+  const captionTable = new docx.Table({
+    layout: docx.TableLayoutType.FIXED,
+    width: { size: 100, type: docx.WidthType.PERCENTAGE },
+    rows: [
+      new docx.TableRow({
+        height: {
+          value: docx.convertMillimetersToTwip(7),
+          rule: docx.HeightRule.EXACT,
+        },
+        children: [
+          new docx.TableCell({
+            children: [
+              new docx.Paragraph({
+                text: `編號(${entry.number})`,
+                alignment: docx.AlignmentType.CENTER,
+                spacing: { before: 0, after: 0 },
+              }),
+            ],
+            width: { size: 22, type: docx.WidthType.PERCENTAGE },
+            verticalAlign: docx.VerticalAlign.CENTER,
+          }),
+          new docx.TableCell({
+            children: [
+              new docx.Paragraph({
+                text: description,
+                alignment: docx.AlignmentType.LEFT,
+                spacing: { before: 0, after: 0 },
+              }),
+            ],
+            width: { size: 78, type: docx.WidthType.PERCENTAGE },
+            verticalAlign: docx.VerticalAlign.CENTER,
+          }),
+        ],
+      }),
+    ],
+  });
+  return new docx.TableCell({
+    children: [
+      new docx.Paragraph({
+        children: [
+          new docx.ImageRun({
+            data: entry.image.docData,
+            transformation: imageSize,
+          }),
+        ],
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 100 },
+      }),
+      captionTable,
+      new docx.Paragraph({
+        children: [new docx.TextRun({ text: "", size: 2 })],
+        spacing: { before: 0, after: 0, line: 1 },
+      }),
+    ],
+    width: { size: 50, type: docx.WidthType.PERCENTAGE },
+    verticalAlign: docx.VerticalAlign.CENTER,
+  });
+};
+
+const createMultiPhotoContent = (docx, images) => {
+  const { count, order } = getMultiPhotoSettings();
+  const content = [];
+  const pageCount = Math.ceil(images.length / count);
+  const rowHeight = count === 2 ? 225 : 112;
+
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const firstIndex = pageIndex * count;
+    const visualEntries = getMultiPhotoPageEntries(
+      images,
+      firstIndex,
+      count,
+      order,
+    );
+    const rows = [];
+    for (let index = 0; index < visualEntries.length; index += 2) {
+      rows.push(
+        new docx.TableRow({
+          height: {
+            value: docx.convertMillimetersToTwip(rowHeight),
+            rule: docx.HeightRule.EXACT,
+          },
+          children: [
+            createMultiPhotoCell(docx, visualEntries[index], count),
+            createMultiPhotoCell(docx, visualEntries[index + 1], count),
+          ],
+        }),
+      );
+    }
+    content.push(
+      new docx.Table({
+        layout: docx.TableLayoutType.FIXED,
+        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+        rows,
+      }),
+    );
+    if (pageIndex < pageCount - 1) {
+      content.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    }
+  }
+  return content;
 };
 
 const createDefaultFooter = (docx) => {

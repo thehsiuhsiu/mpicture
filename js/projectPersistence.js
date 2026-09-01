@@ -2,6 +2,7 @@ import { state, ACCIDENT_TAG_OPTIONS } from "./state.js";
 import { IMAGE_SECURITY_LIMITS } from "./imageHandler.js";
 import { PROJECT_CHANGED_EVENT } from "./projectEvents.js";
 import { createObjectUrl, revokeObjectUrl, showToast } from "./utils.js";
+import { normalizePhotoStartNumber } from "./photoNumbering.js";
 
 const DATABASE_NAME = "mpicture-local-projects-v1";
 const DATABASE_VERSION = 2;
@@ -12,8 +13,8 @@ const DRAFT_RETENTION_MS = 2 * 60 * 60 * 1000;
 const AUTOSAVE_DELAY_MS = 1000;
 
 const PROJECT_FORMAT = "m-picture-project";
-const PROJECT_VERSION = 2;
-const SUPPORTED_PROJECT_VERSIONS = new Set([1, PROJECT_VERSION]);
+const PROJECT_VERSION = 5;
+const SUPPORTED_PROJECT_VERSIONS = new Set([1, 2, 3, 4, PROJECT_VERSION]);
 const PROJECT_MAGIC = new Uint8Array([
   0x4d, 0x50, 0x49, 0x43, 0x54, 0x55, 0x52, 0x45,
 ]);
@@ -24,6 +25,7 @@ const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const AES_GCM_TAG_BYTES = 16;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
+const MAX_OUTPUT_PER_SPLIT = 100;
 const MAX_PROJECT_BYTES = IMAGE_SECURITY_LIMITS.maxTotalBytes + 16 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 128;
@@ -32,6 +34,7 @@ const MAX_PASSWORD_BYTES = 256;
 const FIELD_LIMITS = Object.freeze({
   docTitleLeft: 120,
   docTitleMiddle: 120,
+  docTitleRight: 120,
   zipPrefix: 200,
   caseUni: 200,
   caseDate: 80,
@@ -42,6 +45,8 @@ const FIELD_LIMITS = Object.freeze({
   imageAddress: 500,
   imageDescription: 5000,
   otherText: 500,
+  sourceFileName: 255,
+  importId: 120,
 });
 
 const SAFE_IMAGE_TYPES = new Set([
@@ -54,8 +59,10 @@ const SAFE_IMAGE_TYPES = new Set([
   "image/avif",
 ]);
 
-const SAFE_FORMATS = new Set(["left", "middle"]);
-const SAFE_VIEW_MODES = new Set(["grid", "list"]);
+const SAFE_FORMATS = new Set(["left", "middle", "right"]);
+const SAFE_VIEW_MODES = new Set(["grid", "list", "preview"]);
+const SAFE_MULTI_PHOTO_COUNTS = new Set([2, 4]);
+const SAFE_MULTI_PHOTO_ORDERS = new Set(["horizontal", "vertical"]);
 const SAFE_PDF_FONTS = new Set([
   "kai",
   "noto-serif-tc",
@@ -397,6 +404,12 @@ const normalizeImageMetadata = (rawImage, index, sourceVersion) => {
       "description",
       "accidentTags",
       "rotation",
+      "importBatchId",
+      "originalImportIndex",
+      "splitGroupId",
+      "splitPartIndex",
+      "splitPartCount",
+      "sourceFileName",
       "blob",
     ]),
     `第 ${index + 1} 張圖片`,
@@ -438,6 +451,26 @@ const normalizeImageMetadata = (rawImage, index, sourceVersion) => {
           "照片自訂日期",
         );
 
+  const importBatchId = requireString(
+    image.importBatchId || "",
+    FIELD_LIMITS.importId,
+    "照片匯入批次",
+  );
+  const splitGroupId = requireString(
+    image.splitGroupId || "",
+    FIELD_LIMITS.importId,
+    "長截圖群組",
+  );
+  const originalImportIndex = importBatchId
+    ? requireInteger(image.originalImportIndex ?? index, 0, IMAGE_SECURITY_LIMITS.maxCount, "原始匯入順序")
+    : null;
+  const splitPartIndex = splitGroupId
+    ? requireInteger(image.splitPartIndex, 1, MAX_OUTPUT_PER_SPLIT, "長截圖分段順序")
+    : null;
+  const splitPartCount = splitGroupId
+    ? requireInteger(image.splitPartCount, 1, MAX_OUTPUT_PER_SPLIT, "長截圖分段總數")
+    : null;
+
   return {
     name: sanitizeFileName(
       requireString(image.name, FIELD_LIMITS.imageName, "圖片名稱"),
@@ -461,6 +494,16 @@ const normalizeImageMetadata = (rawImage, index, sourceVersion) => {
     ),
     accidentTags: normalizeAccidentTags(image.accidentTags || {}),
     rotation: requireEnum(image.rotation ?? 0, SAFE_ROTATIONS, "圖片旋轉角度"),
+    importBatchId,
+    originalImportIndex,
+    splitGroupId,
+    splitPartIndex,
+    splitPartCount,
+    sourceFileName: requireString(
+      image.sourceFileName || "",
+      FIELD_LIMITS.sourceFileName,
+      "來源檔名",
+    ),
   };
 };
 
@@ -488,10 +531,19 @@ const normalizeProjectStructure = (rawProject) => {
   );
   assertOnlyKeys(
     settings,
-    new Set(["selectedFormat", "viewMode", "pdfFont", "photoSize", "dateMode"]),
+    new Set([
+      "selectedFormat",
+      "viewMode",
+      "pdfFont",
+      "photoSize",
+      "dateMode",
+      "multiPhotoCount",
+      "multiPhotoOrder",
+      "photoStartNumber",
+    ]),
     "專案設定",
   );
-  assertOnlyKeys(titles, new Set(["left", "middle"]), "文件標題");
+  assertOnlyKeys(titles, new Set(["left", "middle", "right"]), "文件標題");
   if (!Array.isArray(project.images) || project.images.length > IMAGE_SECURITY_LIMITS.maxCount) {
     throw new Error("專案照片數量超過安全限制");
   }
@@ -533,6 +585,11 @@ const normalizeProjectStructure = (rawProject) => {
         FIELD_LIMITS.docTitleMiddle,
         "交通事故文件標題",
       ),
+      right: requireString(
+        titles.right || "照片黏貼表",
+        FIELD_LIMITS.docTitleRight,
+        "多格照片文件標題",
+      ),
     },
     settings: {
       selectedFormat: requireEnum(settings.selectedFormat, SAFE_FORMATS, "文件格式"),
@@ -540,6 +597,22 @@ const normalizeProjectStructure = (rawProject) => {
       pdfFont: requireEnum(settings.pdfFont, SAFE_PDF_FONTS, "PDF 字型"),
       photoSize: requireInteger(settings.photoSize, 120, 600, "照片預覽大小"),
       dateMode: requireBoolean(settings.dateMode, "日期模式"),
+      multiPhotoCount: requireEnum(
+        settings.multiPhotoCount ?? 4,
+        SAFE_MULTI_PHOTO_COUNTS,
+        "多格照片每頁張數",
+      ),
+      multiPhotoOrder: requireEnum(
+        settings.multiPhotoOrder ?? "horizontal",
+        SAFE_MULTI_PHOTO_ORDERS,
+        "多格照片排序方式",
+      ),
+      photoStartNumber: requireInteger(
+        settings.photoStartNumber ?? 1,
+        1,
+        999,
+        "照片起始編號",
+      ),
     },
     images,
   };
@@ -561,6 +634,7 @@ const captureProject = () => {
     titles: {
       left: state.customDocTitles.left,
       middle: state.customDocTitles.middle,
+      right: state.customDocTitles.right,
     },
     settings: {
       selectedFormat: state.selectedFormat,
@@ -568,6 +642,15 @@ const captureProject = () => {
       pdfFont: document.getElementById("pdfFontSelect")?.value || "kai",
       photoSize: Number(document.getElementById("photoSizeSlider")?.value || 250),
       dateMode: Boolean(document.getElementById("dateModeSwitch")?.checked),
+      multiPhotoCount: Number(
+        document.querySelector('input[name="multiPhotoCount"]:checked')?.value || 4,
+      ),
+      multiPhotoOrder:
+        document.querySelector('input[name="multiPhotoOrder"]:checked')?.value ||
+        "horizontal",
+      photoStartNumber: normalizePhotoStartNumber(
+        document.getElementById("photoStartNumber")?.value || 1,
+      ),
     },
     images: state.selectedImages.map((image) => ({
       name: image.name,
@@ -581,6 +664,12 @@ const captureProject = () => {
       description: state.imageDescriptions[image.id] || "",
       accidentTags: state.imageAccidentTags[image.id] || {},
       rotation: state.imageRotations[image.id] || 0,
+      importBatchId: image.importBatchId || "",
+      originalImportIndex: image.originalImportIndex ?? null,
+      splitGroupId: image.splitGroupId || "",
+      splitPartIndex: image.splitPartIndex ?? null,
+      splitPartCount: image.splitPartCount ?? null,
+      sourceFileName: image.sourceFileName || "",
       blob: image.blob,
     })),
   };
@@ -592,7 +681,11 @@ const hasMeaningfulContent = (project) => {
     Object.values(project.fields).some((value) => value.trim()) ||
     project.titles.left !== "照片黏貼表" ||
     project.titles.middle !== "照片黏貼表" ||
-    project.settings.selectedFormat !== "left"
+    project.titles.right !== "照片黏貼表" ||
+    project.settings.selectedFormat !== "left" ||
+    project.settings.multiPhotoCount !== 4 ||
+    project.settings.multiPhotoOrder !== "horizontal" ||
+    project.settings.photoStartNumber !== 1
   );
 };
 
@@ -1154,6 +1247,7 @@ const createEmptyProject = () => ({
   titles: {
     left: "照片黏貼表",
     middle: "照片黏貼表",
+    right: "照片黏貼表",
   },
   settings: {
     selectedFormat: "left",
@@ -1161,6 +1255,9 @@ const createEmptyProject = () => ({
     pdfFont: "kai",
     photoSize: 250,
     dateMode: false,
+    multiPhotoCount: 4,
+    multiPhotoOrder: "horizontal",
+    photoStartNumber: 1,
   },
   images: [],
 });
@@ -1213,7 +1310,7 @@ const setupProjectControls = () => {
 const isProjectInput = (target) =>
   target instanceof Element &&
   target.matches(
-    ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-checkbox, .accident-tag-other-input, #dateModeSwitch, #pdfFontSelect, #photoSizeSlider",
+    ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-checkbox, .accident-tag-other-input, .multi-layout-input, #dateModeSwitch, #pdfFontSelect, #photoSizeSlider",
   );
 
 export const shouldWarnBeforeUnload = () => dirty || saveInProgress;

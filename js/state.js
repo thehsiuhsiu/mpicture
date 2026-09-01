@@ -5,8 +5,9 @@ export const state = {
   imageCounter: 0,
   isGenerating: false,
   isInitialized: false,
-  selectedFormat: "left", // 'left': 刑事案件, 'middle': 交通事故
-  viewMode: "grid", // 'grid' or 'list'
+  selectedFormat: "left", // 'left': 刑事案件, 'middle': 交通事故, 'right': 多格照片
+  viewMode: "grid", // 'grid', 'list' or 'preview'
+  photoStartNumber: 1, // 本次第一張照片的顯示編號
   imageDescriptions: {}, // 儲存圖片說明，以 image id 為 key
   imageDates: {}, // 儲存圖片日期，以 image id 為 key
   imageAddresses: {}, // 儲存圖片地址，以 image id 為 key
@@ -16,6 +17,7 @@ export const state = {
   customDocTitles: {
     left: "刑案照片黏貼表",
     middle: "非道路交通事故照片黏貼紀錄表",
+    right: "照片黏貼表",
   }, // 儲存自定義文檔標題
 };
 
@@ -40,10 +42,12 @@ export const ACCIDENT_TAG_OPTIONS = [
 export const FORMAT_NAMES = {
   left: "刑案",
   middle: "交通事故",
+  right: "多格照片",
 };
 
 // 格式標題對應
 export const FORMAT_TITLES = {
   left: "刑案照片黏貼表",
   middle: "(非)道路交通事故照片黏貼紀錄表",
+  right: "照片黏貼表",
 };

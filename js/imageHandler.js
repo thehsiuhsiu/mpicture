@@ -13,6 +13,16 @@ import {
   revokeObjectUrl,
 } from "./utils.js";
 import { notifyProjectChanged } from "./projectEvents.js";
+import { updateSplitOrderWarning } from "./splitOrderManager.js";
+import {
+  getPhotoNumber,
+  updatePhotoNumberingWarning,
+} from "./photoNumbering.js";
+import {
+  acceptCurrentSplitGroupForImages,
+  flattenSplitGroupReplacement,
+} from "./splitGroupLogic.js";
+import { getMissingOutputDateEntries } from "./dateValidation.js";
 
 export const IMAGE_SECURITY_LIMITS = Object.freeze({
   maxCount: 500,
@@ -31,6 +41,12 @@ const SAFE_IMAGE_MIME_TYPES = new Set([
   "image/tiff",
   "image/avif",
 ]);
+
+export const INTERNAL_IMAGE_DRAG_TYPE =
+  "application/x-mpicture-image-id";
+
+const DEFAULT_DATE_PLACEHOLDER = "日期 (留空則使用側邊欄資訊)";
+const MISSING_EXIF_DATE_PLACEHOLDER = "未找到 EXIF 日期，請手動輸入";
 
 const detectSafeImageType = async (blob) => {
   const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
@@ -92,7 +108,7 @@ const createDuplicateSignature = ({ name, size, width = "", height = "" }) =>
     Number.isFinite(height) ? height : "",
   ].join("|");
 
-const buildImageRecord = async (
+export const buildImageRecord = async (
   blob,
   fileName,
   date = "",
@@ -249,7 +265,7 @@ const convertHeicToJpeg = async (file) => {
   }
 };
 
-const processSingleFile = async (file) => {
+export const prepareImageFile = async (file) => {
   if (!isHeicFile(file)) {
     const detectedType = await detectSafeImageType(file);
     if (!detectedType) throw new Error("圖片內容不是允許的安全格式");
@@ -313,7 +329,6 @@ const buildImageRecordWithExif = async (blob, fileName) => {
  */
 export const handleImageSelection = (event) => {
   const files = Array.from(event.target.files);
-  showUploadingModal();
   processFiles(files);
   event.target.value = "";
 };
@@ -321,7 +336,23 @@ export const handleImageSelection = (event) => {
 /**
  * 處理檔案陣列
  */
-export const processFiles = async (files) => {
+let fileImportQueue = Promise.resolve();
+
+export const processFiles = (files) => {
+  const filesToProcess = Array.from(files || []);
+  if (!filesToProcess.length) return Promise.resolve();
+
+  const currentImport = fileImportQueue.then(() =>
+    processFileBatch(filesToProcess),
+  );
+
+  // 保留一條永遠可繼續的佇列，避免單次失敗阻斷後續匯入。
+  fileImportQueue = currentImport.catch(() => {});
+  return currentImport;
+};
+
+const processFileBatch = async (files) => {
+  showUploadingModal();
   console.log("Processing files:", files.length);
   const imageDataArray = [];
   const failedFiles = [];
@@ -370,7 +401,7 @@ export const processFiles = async (files) => {
 
     for (const file of sizeLimitedFiles) {
       try {
-        imageDataArray.push(await processSingleFile(file));
+        imageDataArray.push(await prepareImageFile(file));
       } catch (error) {
         console.error("Image processing failed:", file.name, error);
         failedFiles.push(file.name);
@@ -378,7 +409,7 @@ export const processFiles = async (files) => {
     }
 
     console.log("Image data processed:", imageDataArray.length);
-    imageDataArray.forEach(handleImageAddition);
+    appendPreparedImages(imageDataArray);
 
     if (failedFiles.length) {
       alert(
@@ -412,6 +443,11 @@ export const processFiles = async (files) => {
         ].join("\n"),
       );
     }
+
+    if (imageDataArray.length) {
+      updateExifDateWarnings();
+      showMissingExifDateWarning();
+    }
   } finally {
     hideConversionModal();
     hideUploadingModal();
@@ -421,7 +457,7 @@ export const processFiles = async (files) => {
 /**
  * 處理圖片新增
  */
-const handleImageAddition = (imageData) => {
+const handleImageAddition = (imageData, { notify = true } = {}) => {
   const emptyState = document.querySelector(".empty-state");
   if (emptyState) {
     emptyState.remove();
@@ -429,13 +465,13 @@ const handleImageAddition = (imageData) => {
   if (isDuplicateImage(imageData)) {
     console.log("Duplicate found:", imageData.name);
     if (confirm(`檔案 "${imageData.name}" 已經存在。是否重複新增？`)) {
-      addImageToCollection(imageData);
+      addImageToCollection(imageData, { notify });
     } else {
       revokeObjectUrl(imageData.previewUrl);
       console.log("User chose not to add duplicate image");
     }
   } else {
-    addImageToCollection(imageData);
+    addImageToCollection(imageData, { notify });
   }
 };
 
@@ -461,13 +497,85 @@ const isDuplicateImage = (newImage) => {
 /**
  * 將圖片加入收藏
  */
-const addImageToCollection = (imageData) => {
+const addImageToCollection = (imageData, { notify = true } = {}) => {
   state.selectedImages.push(imageData);
   addImageToPreview(imageData, state.selectedImages.length);
   updateCreateButtonState();
-  notifyProjectChanged();
+  if (notify) notifyProjectChanged();
   console.log("Image added to collection:", imageData.name);
   console.log("Total images in collection:", state.selectedImages.length);
+};
+
+export const appendPreparedImages = (records) => {
+  const list = Array.from(records || []);
+  list.forEach((record) => handleImageAddition(record, { notify: false }));
+  if (list.length) {
+    updateSplitOrderWarning();
+    notifyProjectChanged();
+  }
+};
+
+export const replaceImageWithPreparedImages = (
+  imageId,
+  records,
+  { flattenExistingSplitGroup = false } = {},
+) => {
+  const replacements = Array.from(records || []);
+  const originalIndex = state.selectedImages.findIndex(
+    (image) => image.id === imageId,
+  );
+  if (originalIndex < 0 || !replacements.length) return false;
+
+  const original = state.selectedImages[originalIndex];
+  const originalFields = {
+    customDate: state.imageDates[imageId] || "",
+    address: state.imageAddresses[imageId] || "",
+    description: state.imageDescriptions[imageId] || "",
+    accidentTags: { ...(state.imageAccidentTags[imageId] || {}) },
+  };
+
+  if (flattenExistingSplitGroup && original.splitGroupId) {
+    flattenSplitGroupReplacement(state.selectedImages, original, replacements);
+  }
+
+  state.selectedImages.splice(originalIndex, 1, ...replacements);
+  delete state.imageDescriptions[imageId];
+  delete state.imageDates[imageId];
+  delete state.imageAddresses[imageId];
+  delete state.imageAccidentTags[imageId];
+  delete state.imageRotations[imageId];
+
+  replacements.forEach((record, index) => {
+    state.imageDescriptions[record.id] = index === 0 ? originalFields.description : "";
+    state.imageDates[record.id] = originalFields.customDate;
+    state.imageAddresses[record.id] = originalFields.address;
+    state.imageAccidentTags[record.id] = { ...originalFields.accidentTags };
+    state.imageRotations[record.id] = 0;
+  });
+
+  document.querySelector(`.image-container[data-id="${imageId}"]`)?.remove();
+  replacements.forEach((record) => addImageToPreview(record, 0));
+
+  const preview = document.getElementById("imagePreview");
+  state.selectedImages.forEach((image, index) => {
+    const container = preview?.querySelector(
+      `.image-container[data-id="${image.id}"]`,
+    );
+    if (!container) return;
+    preview.appendChild(container);
+    const counter = container.querySelector(".image-counter");
+    if (counter) counter.textContent = String(getPhotoNumber(index));
+  });
+
+  if (original.previewUrl) revokeObjectUrl(original.previewUrl);
+  state.imageCounter = state.selectedImages.length;
+  state.editingImageId = null;
+  updateEditToolsState(false);
+  updateCreateButtonState();
+  updateExifDateWarnings();
+  updateSplitOrderWarning();
+  notifyProjectChanged();
+  return true;
 };
 
 /**
@@ -482,13 +590,15 @@ const addImageToPreview = (imageData, counter) => {
 
   const counterElement = document.createElement("div");
   counterElement.className = "image-counter";
-  counterElement.textContent = counter;
+  counterElement.textContent = getPhotoNumber(Math.max(0, counter - 1));
   imageContainer.appendChild(counterElement);
 
   const img = document.createElement("img");
   img.src = imageData.previewUrl;
   img.alt = imageData.name;
   img.title = imageData.name;
+  // 防止瀏覽器啟動 <img> 的原生圖片拖曳，排序只由外層卡片處理。
+  img.draggable = false;
   imageContainer.appendChild(img);
 
   const slider = document.getElementById("photoSizeSlider");
@@ -504,10 +614,11 @@ const addImageToPreview = (imageData, counter) => {
   dateInput.type = "text";
   dateInput.className = "image-date-input";
   dateInput.maxLength = 80;
-  dateInput.placeholder = "日期 (留空則使用側邊欄資訊)";
+  dateInput.placeholder = DEFAULT_DATE_PLACEHOLDER;
   dateInput.value = state.imageDates[imageData.id] || "";
   dateInput.addEventListener("input", (e) => {
     state.imageDates[imageData.id] = e.target.value;
+    updateExifDateWarnings();
   });
   dateInput.addEventListener("dragover", (e) => e.preventDefault());
   dateInput.addEventListener("drop", (e) => {
@@ -515,6 +626,12 @@ const addImageToPreview = (imageData, counter) => {
     e.stopPropagation();
   });
   descriptionDiv.appendChild(dateInput);
+
+  const dateWarning = document.createElement("span");
+  dateWarning.className = "exif-date-warning";
+  dateWarning.setAttribute("role", "status");
+  dateWarning.textContent = "未找到 EXIF 日期，請手動輸入";
+  descriptionDiv.appendChild(dateWarning);
 
   const addressInput = document.createElement("input");
   addressInput.type = "text";
@@ -621,19 +738,30 @@ const addImageToPreview = (imageData, counter) => {
 };
 
 export const handleViewModeChange = (mode) => {
-  state.viewMode = mode;
+  const nextMode = ["grid", "list", "preview"].includes(mode) ? mode : "grid";
+  state.viewMode = nextMode;
   const preview = document.getElementById("imagePreview");
+  const documentPreview = document.getElementById("documentPreview");
   const gridViewBtn = document.getElementById("gridViewBtn");
   const listViewBtn = document.getElementById("listViewBtn");
+  const documentPreviewBtn = document.getElementById("documentPreviewBtn");
 
-  if (mode === "list") {
-    preview.classList.add("list-view");
-    gridViewBtn.classList.remove("active");
-    listViewBtn.classList.add("active");
-  } else {
-    preview.classList.remove("list-view");
-    gridViewBtn.classList.add("active");
-    listViewBtn.classList.remove("active");
+  preview?.classList.toggle("list-view", nextMode === "list");
+  if (preview) preview.hidden = nextMode === "preview";
+  if (documentPreview) documentPreview.hidden = nextMode !== "preview";
+  document.body.classList.toggle("document-preview-mode", nextMode === "preview");
+
+  gridViewBtn?.classList.toggle("active", nextMode === "grid");
+  listViewBtn?.classList.toggle("active", nextMode === "list");
+  documentPreviewBtn?.classList.toggle("active", nextMode === "preview");
+  gridViewBtn?.setAttribute("aria-pressed", String(nextMode === "grid"));
+  listViewBtn?.setAttribute("aria-pressed", String(nextMode === "list"));
+  documentPreviewBtn?.setAttribute(
+    "aria-pressed",
+    String(nextMode === "preview"),
+  );
+
+  if (nextMode === "grid") {
     const slider = document.getElementById("photoSizeSlider");
     if (slider) {
       const imgs = preview.querySelectorAll(".image-container img");
@@ -644,7 +772,7 @@ export const handleViewModeChange = (mode) => {
     }
   }
   notifyProjectChanged();
-  console.log("View mode changed to:", state.viewMode);
+  console.log("View mode changed to:", nextMode);
 };
 
 export const handleImageContainerEvents = (e) => {
@@ -663,13 +791,29 @@ export const handleImageContainerEvents = (e) => {
 
   if (!e.dataTransfer) return;
 
+  const dragTypes = Array.from(e.dataTransfer.types || []);
+  const isInternalImageDrag = dragTypes.includes(INTERNAL_IMAGE_DRAG_TYPE);
+
+  // 只有純外部檔案拖入才交給匯入處理；內部排序識別碼具有優先權。
+  if (
+    e.type !== "dragstart" &&
+    dragTypes.includes("Files") &&
+    !isInternalImageDrag
+  ) {
+    return;
+  }
+
   switch (e.type) {
     case "dragstart":
       if (state.editingImageId) {
         e.preventDefault();
         return;
       }
-      e.dataTransfer.setData("text/plain", container.dataset.id);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData(
+        INTERNAL_IMAGE_DRAG_TYPE,
+        container.dataset.id,
+      );
       container.style.opacity = "0.5";
       break;
     case "dragover":
@@ -682,7 +826,8 @@ export const handleImageContainerEvents = (e) => {
       container.classList.remove("drag-over");
       if (e.type === "drop") {
         e.preventDefault();
-        const draggedId = e.dataTransfer.getData("text");
+        const draggedId = e.dataTransfer.getData(INTERNAL_IMAGE_DRAG_TYPE);
+        if (!draggedId) return;
         handleImageDrop(draggedId, container);
       }
       break;
@@ -714,6 +859,7 @@ const handleImageDrop = (draggedId, dropZone) => {
     }
 
     updateImageOrder();
+    updateSplitOrderWarning();
     notifyProjectChanged();
   }
 };
@@ -725,7 +871,7 @@ const updateImageOrder = () => {
   containers.forEach((container, index) => {
     const counter = container.querySelector(".image-counter");
     if (counter) {
-      counter.textContent = index + 1;
+      counter.textContent = getPhotoNumber(index);
     }
   });
 
@@ -738,17 +884,153 @@ const updateImageOrder = () => {
   console.log("Total images after reorder:", state.selectedImages.length);
 
   updateCreateButtonState();
+  updateExifDateWarnings();
+};
+
+const isAutoExifEnabled = () =>
+  Boolean(document.getElementById("dateModeSwitch")?.checked);
+
+const isExifDateRelevant = () => state.selectedFormat !== "right";
+
+const getMissingExifDates = () =>
+  state.selectedImages
+    .map((image, index) => ({ image, number: getPhotoNumber(index) }))
+    .filter(
+      ({ image }) =>
+        !String(image.date || "").trim() &&
+        !String(state.imageDates[image.id] || "").trim(),
+    );
+
+export const updateExifDateWarnings = () => {
+  const shouldValidate = isAutoExifEnabled() && isExifDateRelevant();
+
+  if (!isExifDateRelevant()) closeExifWarningModal?.();
+
+  state.selectedImages.forEach((image) => {
+    const dateInput = document.querySelector(
+      `.image-container[data-id="${image.id}"] .image-date-input`,
+    );
+    if (!dateInput) return;
+
+    const isMissing =
+      shouldValidate &&
+      !String(image.date || "").trim() &&
+      !String(state.imageDates[image.id] || "").trim();
+
+    dateInput.classList.toggle("missing-exif-date", isMissing);
+    dateInput.placeholder = isMissing
+      ? MISSING_EXIF_DATE_PLACEHOLDER
+      : DEFAULT_DATE_PLACEHOLDER;
+    if (isMissing) {
+      dateInput.setAttribute("aria-invalid", "true");
+    } else {
+      dateInput.removeAttribute("aria-invalid");
+    }
+  });
+};
+
+let closeExifWarningModal = null;
+
+export const showMissingExifDateWarning = () => {
+  updateExifDateWarnings();
+  if (!isAutoExifEnabled() || !isExifDateRelevant()) return false;
+
+  const missingDates = getMissingExifDates();
+  if (!missingDates.length) return false;
+
+  const modal = document.getElementById("exifDateWarningModal");
+  const message = document.getElementById("exifDateWarningMessage");
+  const reviewButton = document.getElementById("exifDateReviewBtn");
+  const laterButton = document.getElementById("exifDateLaterBtn");
+  const closeButton = document.getElementById("exifDateWarningClose");
+  if (!modal || !message || !reviewButton || !laterButton || !closeButton) {
+    return false;
+  }
+
+  closeExifWarningModal?.();
+  message.textContent = `照片編號 ${missingDates
+    .map(({ number }) => number)
+    .join("、")} 沒有可用的拍攝日期，請手動填寫。`;
+
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") closeExifWarningModal?.();
+  };
+
+  const close = () => {
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+    document.removeEventListener("keydown", handleKeydown);
+    closeExifWarningModal = null;
+  };
+
+  closeExifWarningModal = close;
+  laterButton.onclick = close;
+  closeButton.onclick = close;
+  modal.onclick = (event) => {
+    if (event.target === modal) close();
+  };
+  reviewButton.onclick = () => {
+    const firstMissingId = missingDates[0].image.id;
+    close();
+    handleViewModeChange("list");
+    requestAnimationFrame(() => {
+      const firstInput = document.querySelector(
+        `.image-container[data-id="${firstMissingId}"] .image-date-input`,
+      );
+      firstInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstInput?.focus({ preventScroll: true });
+    });
+  };
+
+  document.addEventListener("keydown", handleKeydown);
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+  reviewButton.focus();
+  return true;
+};
+
+export const confirmMissingDatesBeforeExport = () => {
+  if (!isExifDateRelevant() || !isAutoExifEnabled()) return true;
+
+  const sharedDate = String(
+    document.getElementById("caseDate")?.value || "",
+  ).trim();
+  const missingDates = getMissingOutputDateEntries(
+    state.selectedImages,
+    state.imageDates,
+    {
+      sharedDate,
+      useExifDate: true,
+      numberForIndex: getPhotoNumber,
+    },
+  );
+  if (!missingDates.length) return true;
+
+  const visibleNumbers = missingDates
+    .slice(0, 20)
+    .map(({ number }) => number)
+    .join("、");
+  const remainingCount = missingDates.length - 20;
+  const numberText = remainingCount > 0
+    ? `${visibleNumbers}，另有 ${remainingCount} 張`
+    : visibleNumbers;
+
+  return confirm(
+    `左側「攝影日期」尚未填寫，照片編號 ${numberText} 也沒有可用日期。輸出文件中的日期欄位將留白，仍要繼續輸出嗎？`,
+  );
 };
 
 const updateEditToolsState = (enabled) => {
   const rotateLeftBtn = document.getElementById("rotateLeftBtn");
   const rotateRightBtn = document.getElementById("rotateRightBtn");
+  const splitImageBtn = document.getElementById("splitImageBtn");
 
   if (rotateLeftBtn) rotateLeftBtn.disabled = !enabled;
   if (rotateRightBtn) rotateRightBtn.disabled = !enabled;
+  if (splitImageBtn) splitImageBtn.disabled = !enabled;
 };
 
-const showDeleteConfirmDialog = (id, imageName) => {
+const showDeleteConfirmDialog = (imageData) => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "delete-confirm-overlay";
@@ -756,12 +1038,16 @@ const showDeleteConfirmDialog = (id, imageName) => {
     const dialog = document.createElement("div");
     dialog.className = "delete-confirm-dialog";
 
+    const message = imageData?.splitGroupId
+      ? "確定要刪除此長截圖分段嗎？刪除後會將剩餘分段重新編號，並視為完整群組。"
+      : "確定要刪除這張照片嗎？";
+
     dialog.innerHTML = `
       <div class="delete-confirm-icon">
         <span class="material-symbols-outlined">warning</span>
       </div>
       <div class="delete-confirm-title">確認刪除</div>
-      <div class="delete-confirm-message">確定要刪除這張照片嗎？</div>
+      <div class="delete-confirm-message">${message}</div>
       <div class="delete-confirm-buttons">
         <button type="button" class="delete-confirm-btn cancel">取消</button>
         <button type="button" class="delete-confirm-btn confirm">刪除</button>
@@ -776,6 +1062,7 @@ const showDeleteConfirmDialog = (id, imageName) => {
     });
 
     const closeDialog = (result) => {
+      document.removeEventListener("keydown", handleKeydown);
       overlay.classList.remove("show");
       setTimeout(() => {
         overlay.remove();
@@ -808,9 +1095,8 @@ export const removeImage = async (id) => {
   console.log("Removing image with id:", id);
 
   const imageData = state.selectedImages.find((img) => img.id === id);
-  const imageName = imageData ? imageData.name : "";
 
-  const confirmed = await showDeleteConfirmDialog(id, imageName);
+  const confirmed = await showDeleteConfirmDialog(imageData);
   if (!confirmed) {
     console.log("Delete cancelled by user");
     return;
@@ -822,6 +1108,12 @@ export const removeImage = async (id) => {
   }
 
   state.selectedImages = state.selectedImages.filter((img) => img.id !== id);
+  if (imageData?.splitGroupId) {
+    acceptCurrentSplitGroupForImages(
+      state.selectedImages,
+      imageData.splitGroupId,
+    );
+  }
   delete state.imageDescriptions[id];
   delete state.imageDates[id];
   delete state.imageAddresses[id];
@@ -847,6 +1139,7 @@ export const removeImage = async (id) => {
     showEmptyState();
   }
   notifyProjectChanged();
+  updateSplitOrderWarning();
 };
 
 const showEmptyState = () => {
@@ -863,11 +1156,19 @@ const updateImageCounters = () => {
   containers.forEach((container, index) => {
     const counter = container.querySelector(".image-counter");
     if (counter) {
-      counter.textContent = index + 1;
+      counter.textContent = getPhotoNumber(index);
     }
   });
   state.imageCounter = containers.length;
   console.log("Image counters updated. New count:", state.imageCounter);
+};
+
+export const refreshDisplayedPhotoNumbers = () => {
+  const containers = document.querySelectorAll("#imagePreview .image-container");
+  containers.forEach((container, index) => {
+    const counter = container.querySelector(".image-counter");
+    if (counter) counter.textContent = String(getPhotoNumber(index));
+  });
 };
 
 export const updateCreateButtonState = () => {
@@ -877,6 +1178,7 @@ export const updateCreateButtonState = () => {
     return;
   }
   const isEnabled = state.selectedImages.length > 0;
+  const isMultiPhoto = state.selectedFormat === "right";
 
   createButton.classList.remove("create-btn-disabled");
   createButton.classList.add("create-btn-enabled");
@@ -887,8 +1189,22 @@ export const updateCreateButtonState = () => {
     "exportProjectBtn",
   ].forEach((buttonId) => {
     const button = document.getElementById(buttonId);
-    if (button) button.disabled = !isEnabled;
+    if (button) {
+      button.disabled =
+        !isEnabled || (buttonId === "downloadDocx" && isMultiPhoto);
+    }
   });
+
+  const docxButton = document.getElementById("downloadDocx");
+  const docxNotice = document.getElementById("multiPhotoDocxNotice");
+  if (docxButton) {
+    docxButton.title = isMultiPhoto
+      ? "多格照片檔案限定列印/PDF"
+      : "輸出 Word 文件";
+    docxButton.setAttribute("aria-describedby", "multiPhotoDocxNotice");
+  }
+  if (docxNotice) docxNotice.hidden = !isMultiPhoto;
+  updatePhotoNumberingWarning();
 
   console.log("Document download options enabled:", isEnabled);
   console.log("Selected images count:", state.selectedImages.length);
@@ -1031,6 +1347,7 @@ export const replaceImageCollection = async (records) => {
   if (!hydratedRecords.length) {
     showEmptyState();
   }
+  updateSplitOrderWarning();
 };
 
 const rotateImageData = async (blob, degrees) => {

@@ -8,6 +8,11 @@ import {
   revokeObjectUrl,
   resizeImageForDoc,
 } from "./utils.js";
+import {
+  getMultiPhotoPageEntries,
+  getMultiPhotoSettings,
+} from "./multiPhotoLayout.js";
+import { getPhotoNumber } from "./photoNumbering.js";
 
 const PDF_PRINT_IMAGE_MAX_DIMENSION = 1800;
 
@@ -163,6 +168,14 @@ export const handleGeneratePDF = async () => {
         isAutoDate,
         manualDate,
         printableImages,
+      );
+    } else if (state.selectedFormat === "right") {
+      const multiPhotoSettings = getMultiPhotoSettings();
+      printContent += buildMultiPhotoContent(
+        title,
+        printableImages,
+        multiPhotoSettings.count,
+        multiPhotoSettings.order,
       );
     }
 
@@ -343,6 +356,73 @@ const buildPrintHTML = (title, pdfFont) => {
                     border: none !important;
                     background: transparent !important;
                 }
+                .multi-photo-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 0;
+                    border-top: 1px solid #000;
+                    border-left: 1px solid #000;
+                }
+                .multi-photo-grid.count-2 {
+                    grid-template-rows: 250mm;
+                }
+                .multi-photo-grid.count-4 {
+                    grid-template-rows: repeat(2, 128mm);
+                }
+                .multi-photo-cell {
+                    display: flex;
+                    min-width: 0;
+                    min-height: 0;
+                    flex-direction: column;
+                    overflow: hidden;
+                    border-right: 1px solid #000;
+                    border-bottom: 1px solid #000;
+                }
+                .multi-photo-cell.empty {
+                    background: #fafafa;
+                }
+                .multi-photo-image {
+                    display: flex;
+                    min-height: 0;
+                    flex: 1;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 1mm;
+                    overflow: hidden;
+                }
+                .multi-photo-image img {
+                    display: block;
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                }
+                .multi-photo-caption {
+                    display: grid;
+                    height: 7mm;
+                    min-height: 7mm;
+                    grid-template-columns: 22% 78%;
+                    border-top: 1px solid #000;
+                }
+                .multi-photo-number,
+                .multi-photo-description {
+                    display: flex;
+                    min-width: 0;
+                    align-items: center;
+                    padding: 1mm 1.5mm;
+                }
+                .multi-photo-number {
+                    justify-content: center;
+                    border-right: 1px solid #000;
+                    white-space: nowrap;
+                }
+                .multi-photo-description {
+                    display: -webkit-box;
+                    max-height: 6mm;
+                    overflow: hidden;
+                    overflow-wrap: anywhere;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 1;
+                }
                 @media print {
                     .page-container {
                         page-break-after: always;
@@ -397,7 +477,7 @@ const buildCriminalContent = (
                 </tr>
                 <tr><td class="photo-cell" colspan="6"><img src="${img1.printUrl}"></td></tr>
                 <tr>
-                    <td class="label-cell">編號(${startIdx + 1})</td>
+                    <td class="label-cell">編號(${getPhotoNumber(startIdx)})</td>
                     <td class="label-cell">照片日期</td>
                     <td class="value-cell" colspan="2">${safeDate1}</td>
                     <td class="label-cell">攝影人</td>
@@ -429,7 +509,7 @@ const buildCriminalContent = (
                 <table>
                     <tr><td class="photo-cell" colspan="6"><img src="${img2.printUrl}"></td></tr>
                     <tr>
-                        <td class="label-cell" style="width:15%;">編號(${startIdx + 2})</td>
+                        <td class="label-cell" style="width:15%;">編號(${getPhotoNumber(startIdx + 1)})</td>
                         <td class="label-cell" style="width:15%;">照片日期</td>
                         <td class="value-cell" style="width:35%;" colspan="2">${safeDate2}</td>
                         <td class="label-cell" style="width:15%;">攝影人</td>
@@ -476,7 +556,7 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
                     <td class="label-cell" style="width:15%;">攝影日期</td>
                     <td class="value-cell" style="width:40%;" colspan="2">${safeDate1}</td>
                     <td class="label-cell" style="width:15%;">照片編號</td>
-                    <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${startIdx + 1}</td>
+                    <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${getPhotoNumber(startIdx)}</td>
                 </tr>
                 <tr>
                     <td class="label-cell">說明</td>
@@ -502,7 +582,7 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
                         <td class="label-cell" style="width:15%;">攝影日期</td>
                         <td class="value-cell" style="width:40%;" colspan="2">${safeDate2}</td>
                         <td class="label-cell" style="width:15%;">照片編號</td>
-                        <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${startIdx + 2}</td>
+                        <td class="value-cell" style="width:30%; text-align:center;" colspan="2">${getPhotoNumber(startIdx + 1)}</td>
                     </tr>
                     <tr>
                         <td class="label-cell">說明</td>
@@ -515,5 +595,43 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
     content += `</div>`;
   }
 
+  return content;
+};
+
+const buildMultiPhotoContent = (title, images, count, order) => {
+  let content = "";
+  const pageCount = Math.ceil(images.length / count);
+
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const firstIndex = pageIndex * count;
+    const entries = getMultiPhotoPageEntries(
+      images,
+      firstIndex,
+      count,
+      order,
+    );
+    content += `<div class="page-container">`;
+    content += `<h1>${escapeHtml(title)}</h1>`;
+    content += `<div class="multi-photo-grid count-${count}">`;
+
+    entries.forEach((entry) => {
+      if (!entry) {
+        content += `<section class="multi-photo-cell empty"></section>`;
+        return;
+      }
+      const { image, number } = entry;
+      const description = state.imageDescriptions[image.id] || "";
+      content += `
+        <section class="multi-photo-cell">
+          <div class="multi-photo-image"><img src="${image.printUrl}" alt=""></div>
+          <div class="multi-photo-caption">
+            <span class="multi-photo-number">編號(${number})</span>
+            <span class="multi-photo-description">${escapeHtml(description)}</span>
+          </div>
+        </section>`;
+    });
+
+    content += `</div></div>`;
+  }
   return content;
 };
