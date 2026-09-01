@@ -52,7 +52,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-    <link rel="stylesheet" href="styles.css?v=20260823-8" />
+    <link rel="stylesheet" href="styles.css?v=20260901-16" />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap"
       rel="stylesheet"
@@ -93,6 +93,9 @@
               <span class="material-symbols-outlined">description</span>
               <span>DOCX</span>
             </button>
+            <p id="multiPhotoDocxNotice" class="multi-photo-docx-notice" hidden>
+              多格照片檔案限定列印/PDF
+            </p>
             <button type="button" class="download-option" id="downloadPdf">
               <span class="material-symbols-outlined">picture_as_pdf</span>
               <span>列印/PDF</span>
@@ -219,11 +222,7 @@
               >
               <span>打包照片</span>
             </button>
-            <button
-              type="button"
-              class="download-option"
-              id="exportProjectBtn"
-            >
+            <button type="button" class="download-option" id="exportProjectBtn">
               <span class="material-symbols-outlined">lock</span>
               <span>匯出加密專案</span>
             </button>
@@ -236,6 +235,7 @@
         <div class="labels">
           <span class="label" data-value="left">刑事案件</span>
           <span class="label" data-value="middle">交通事故</span>
+          <span class="label" data-value="right">多格照片</span>
         </div>
       </div>
       <div class="form-group" data-format="left">
@@ -260,6 +260,100 @@
           value="照片黏貼表"
         />
       </div>
+      <div class="form-group" data-format="right">
+        <label for="docTitleRight">文件標題</label>
+        <input
+          type="text"
+          id="docTitleRight"
+          class="sidebar-input"
+          maxlength="120"
+          placeholder="照片黏貼表"
+          value="照片黏貼表"
+        />
+      </div>
+      <div
+        class="form-group photo-numbering-setting"
+        data-format="left middle right"
+      >
+        <label for="photoStartNumber">照片起始編號</label>
+        <input
+          type="number"
+          id="photoStartNumber"
+          class="sidebar-input"
+          min="1"
+          max="999"
+          step="1"
+          inputmode="numeric"
+          value="1"
+          aria-describedby="photoStartNumberHelp photoStartNumberWarning"
+        />
+        <small id="photoStartNumberHelp" class="sidebar-field-help">
+          例如接續上次編號20，請輸入21。
+        </small>
+        <small
+          id="photoStartNumberWarning"
+          class="sidebar-field-warning"
+          hidden
+        ></small>
+      </div>
+      <div class="multi-photo-settings" data-format="right">
+        <div class="multi-photo-setting-group">
+          <span class="sidebar-label">每頁張數</span>
+          <div
+            class="multi-photo-options"
+            role="radiogroup"
+            aria-label="每頁張數"
+          >
+            <label class="multi-photo-option">
+              <input
+                type="radio"
+                name="multiPhotoCount"
+                value="2"
+                class="multi-layout-input"
+              />
+              <span>2 張</span>
+            </label>
+            <label class="multi-photo-option">
+              <input
+                type="radio"
+                name="multiPhotoCount"
+                value="4"
+                class="multi-layout-input"
+                checked
+              />
+              <span>4 張</span>
+            </label>
+          </div>
+        </div>
+        <div class="multi-photo-setting-group" id="multiPhotoOrderGroup">
+          <span class="sidebar-label">排序方式</span>
+          <div
+            class="multi-photo-options"
+            role="radiogroup"
+            aria-label="照片排序方式"
+          >
+            <label class="multi-photo-option">
+              <input
+                type="radio"
+                name="multiPhotoOrder"
+                value="horizontal"
+                class="multi-layout-input"
+                checked
+              />
+              <span>水平</span>
+            </label>
+            <label class="multi-photo-option">
+              <input
+                type="radio"
+                name="multiPhotoOrder"
+                value="vertical"
+                class="multi-layout-input"
+              />
+              <span>垂直</span>
+            </label>
+          </div>
+        </div>
+      </div>
       <div class="form-group" data-format="left">
         <label for="zipPrefix">案 由</label>
         <input
@@ -281,7 +375,7 @@
         />
       </div>
 
-      <div class="form-group-row" data-format="left middle right">
+      <div class="form-group-row" data-format="left middle">
         <label for="caseDate" id="dateLabelText">攝影日期</label>
         <label class="switch">
           <input type="checkbox" id="dateModeSwitch" />
@@ -289,7 +383,7 @@
         </label>
         <span id="dateModeLabel"></span>
       </div>
-      <div class="form-group" data-format="left middle right">
+      <div class="form-group" data-format="left middle">
         <input
           type="text"
           id="caseDate"
@@ -339,6 +433,16 @@
         >
           <span class="material-symbols-outlined">view_list</span>
         </button>
+        <button
+          type="button"
+          id="documentPreviewBtn"
+          class="view-btn"
+          title="版面預覽"
+          aria-label="版面預覽"
+          aria-pressed="false"
+        >
+          <span class="material-symbols-outlined">preview</span>
+        </button>
         <span class="toolbar-divider"></span>
         <div class="size-slider-container">
           <button type="button" id="sizeDecBtn" class="size-btn" title="縮小">
@@ -356,7 +460,7 @@
             <span class="material-symbols-outlined">add</span>
           </button>
         </div>
-        <div class="edit-tools-container" aria-label="照片旋轉">
+        <div class="edit-tools-container" aria-label="照片編輯">
           <button
             type="button"
             id="rotateLeftBtn"
@@ -375,6 +479,62 @@
           >
             <span class="material-symbols-outlined">rotate_right</span>
           </button>
+          <button
+            type="button"
+            id="splitImageBtn"
+            class="edit-tool-btn"
+            title="分割選取的長截圖"
+            aria-label="分割選取的長截圖"
+            disabled
+          >
+            <span class="material-symbols-outlined">content_cut</span>
+          </button>
+        </div>
+        <div class="document-preview-controls" aria-label="版面預覽控制">
+          <div class="document-page-navigation" aria-label="預覽頁面切換">
+            <button
+              type="button"
+              id="documentPrevPageBtn"
+              class="document-control-btn"
+              title="上一頁"
+              aria-label="上一頁"
+            >
+              <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <span id="documentPageStatus" role="status" aria-live="polite"
+              >第 0 / 0 頁</span
+            >
+            <button
+              type="button"
+              id="documentNextPageBtn"
+              class="document-control-btn"
+              title="下一頁"
+              aria-label="下一頁"
+            >
+              <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+          </div>
+          <div class="document-zoom-controls" aria-label="預覽縮放">
+            <button
+              type="button"
+              id="documentZoomOutBtn"
+              class="document-control-btn"
+              title="縮小預覽"
+              aria-label="縮小預覽"
+            >
+              <span class="material-symbols-outlined">remove</span>
+            </button>
+            <span id="documentZoomStatus">75%</span>
+            <button
+              type="button"
+              id="documentZoomInBtn"
+              class="document-control-btn"
+              title="放大預覽"
+              aria-label="放大預覽"
+            >
+              <span class="material-symbols-outlined">add</span>
+            </button>
+          </div>
         </div>
         <div
           class="project-toolbar preview-project-toolbar"
@@ -386,7 +546,8 @@
             data-status="idle"
             role="status"
             aria-live="polite"
-          >草稿準備中</span>
+            >草稿準備中</span
+          >
           <button
             type="button"
             id="clearProjectBtn"
@@ -399,7 +560,54 @@
         </div>
       </div>
       <div class="container">
+        <div
+          id="splitOrderWarning"
+          class="split-order-warning"
+          role="status"
+          hidden
+        >
+          <span class="material-symbols-outlined" aria-hidden="true"
+            >warning</span
+          >
+          <span id="splitOrderWarningText">長截圖的分段順序已變更</span>
+          <div class="split-order-warning-actions">
+            <button type="button" data-action="restore-all">
+              恢復全部原始順序
+            </button>
+            <button type="button" data-action="review">逐組檢查</button>
+            <button type="button" data-action="dismiss">忽略</button>
+          </div>
+        </div>
         <div id="imagePreview"></div>
+        <section
+          id="documentPreview"
+          class="document-preview"
+          aria-label="文件版面預覽"
+          hidden
+        >
+          <p
+            id="documentPreviewWarning"
+            class="document-preview-warning"
+            hidden
+          ></p>
+          <div id="documentPreviewStage" class="document-preview-stage"></div>
+          <p class="document-preview-note">
+            此預覽僅供顯示排版；輸出之文件實際排版、分頁可能因字型與版本略有差異。
+          </p>
+        </section>
+        <div
+          id="photoDropOverlay"
+          class="photo-drop-overlay"
+          aria-hidden="true"
+        >
+          <div class="photo-drop-message">
+            <span class="material-symbols-outlined" aria-hidden="true"
+              >add_photo_alternate</span
+            >
+            <strong>放開以新增照片</strong>
+            <span>可一次拖入多張圖片</span>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -407,6 +615,50 @@
       <div class="modal-content">
         <p>🚀 照片載入中，請稍候...</p>
         <div class="loader"></div>
+      </div>
+    </div>
+
+    <div
+      id="exifDateWarningModal"
+      class="modal info-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="exifDateWarningTitle"
+      aria-describedby="exifDateWarningMessage"
+    >
+      <div class="exif-date-warning-content">
+        <button
+          type="button"
+          id="exifDateWarningClose"
+          class="info-modal-close"
+          aria-label="關閉"
+        >
+          <span class="material-symbols-outlined">close</span>
+        </button>
+        <span
+          class="material-symbols-outlined exif-warning-icon"
+          aria-hidden="true"
+          >event_busy</span
+        >
+        <h2 id="exifDateWarningTitle">部分照片缺少日期</h2>
+        <p id="exifDateWarningMessage"></p>
+        <div class="exif-date-warning-actions">
+          <button
+            type="button"
+            id="exifDateLaterBtn"
+            class="exif-warning-secondary"
+          >
+            稍後處理
+          </button>
+          <button
+            type="button"
+            id="exifDateReviewBtn"
+            class="exif-warning-primary"
+          >
+            前往填寫
+          </button>
+        </div>
       </div>
     </div>
 
@@ -477,6 +729,117 @@
       </div>
     </div>
 
+    <div
+      id="longScreenshotModal"
+      class="modal long-shot-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="longScreenshotTitle"
+    >
+      <div class="long-shot-dialog">
+        <div class="long-shot-header">
+          <div>
+            <h2 id="longScreenshotTitle">長截圖分割</h2>
+            <p>先檢查切割線，再以分段取代目前選取的照片。</p>
+          </div>
+          <button
+            type="button"
+            id="longScreenshotCloseBtn"
+            class="long-shot-icon-btn"
+            aria-label="關閉"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="long-shot-settings">
+          <label>
+            套用版型
+            <select id="longScreenshotLayoutCount">
+              <option value="2">每頁 2 張（加長比例）</option>
+              <option value="4" selected>每頁 4 張</option>
+            </select>
+          </label>
+          <label class="long-shot-check">
+            <input type="checkbox" id="longScreenshotOverlap" checked />
+            保留約 2% 重疊內容
+          </label>
+        </div>
+        <div class="long-shot-workspace">
+          <section class="long-shot-preview-panel">
+            <div id="longScreenshotStage" class="long-shot-stage">
+              <div class="long-shot-image-wrap">
+                <img
+                  id="longScreenshotImage"
+                  alt="長截圖預覽"
+                  draggable="false"
+                />
+                <div
+                  id="longScreenshotCutLines"
+                  class="long-shot-cut-lines"
+                ></div>
+              </div>
+            </div>
+          </section>
+          <aside class="long-shot-review-panel">
+            <div class="long-shot-panel-title">切割檢查</div>
+            <p id="longScreenshotStatus">正在準備切割建議。</p>
+            <div class="long-shot-legend">
+              <span><i class="safe"></i>較安全</span>
+              <span><i class="review"></i>建議檢查</span>
+              <span><i class="risk"></i>可能有內容</span>
+            </div>
+            <div
+              id="longScreenshotSeamPreview"
+              class="long-shot-seam-preview"
+              aria-label="切割位置放大檢查"
+            >
+              <canvas id="longScreenshotSeamCanvas" aria-hidden="true"></canvas>
+              <span>點選切割線以放大檢查</span>
+            </div>
+            <button
+              type="button"
+              id="longScreenshotAnalyzeBtn"
+              class="long-shot-secondary"
+            >
+              重新自動分析
+            </button>
+            <button
+              type="button"
+              id="longScreenshotConfirmBtn"
+              class="long-shot-primary"
+              hidden
+            >
+              確認此長截圖
+            </button>
+            <p class="long-shot-memory-note">
+              自動判斷僅供輔助，請確認切割線沒有穿過重要文字。
+            </p>
+          </aside>
+        </div>
+        <div class="long-shot-footer">
+          <span id="longScreenshotSummary">尚未選取照片</span>
+          <div>
+            <button
+              type="button"
+              id="longScreenshotCancelBtn"
+              class="long-shot-secondary"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              id="longScreenshotProcessBtn"
+              class="long-shot-primary"
+              disabled
+            >
+              分割並取代原照片
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="photo-source-picker" id="photoSourcePicker">
       <div class="photo-source-menu" id="photoSourceMenu">
         <button
@@ -487,11 +850,7 @@
           <span class="material-symbols-outlined">add_photo_alternate</span>
           <span>本機照片</span>
         </button>
-        <button
-          type="button"
-          class="photo-source-option"
-          id="openProjectBtn"
-        >
+        <button type="button" class="photo-source-option" id="openProjectBtn">
           <span class="material-symbols-outlined">folder_open</span>
           <span>開啟專案</span>
         </button>
@@ -563,7 +922,9 @@
             aria-pressed="false"
             title="顯示專案密碼"
           >
-            <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+            <span class="material-symbols-outlined" aria-hidden="true"
+              >visibility</span
+            >
           </button>
         </div>
         <div id="projectPasswordConfirmGroup">
@@ -589,7 +950,9 @@
               aria-pressed="false"
               title="顯示確認密碼"
             >
-              <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              <span class="material-symbols-outlined" aria-hidden="true"
+                >visibility</span
+              >
             </button>
           </div>
         </div>
@@ -655,7 +1018,7 @@
       </div>
     </div>
 
-    <script type="module" src="js/main.js?v=20260823-8"></script>
+    <script type="module" src="js/main.js?v=20260901-18"></script>
 
     <footer>
       <h3>Copyright© 2024 M-Picture. All rights reserved.</h3>
@@ -734,10 +1097,14 @@
         <section>
           <h3>隱私權聲明</h3>
           <p>
-            本網頁不提供伺服器端照片儲存，照片處理在使用者瀏覽器本機完成。為協助使用者繼續未完成的工作，專案草稿會自動儲存在目前瀏覽器中，自最後一次自動儲存起保留 2 小時；再次開啟網站時會檢查並清除過期草稿，使用者也可隨時手動清除。Google 相簿匯入功能目前未對外公開，僅供測試人員手動選取照片進行測試使用。
+            本網頁不提供伺服器端照片儲存，照片處理在使用者瀏覽器本機完成。為協助使用者繼續未完成的工作，專案草稿會自動儲存在目前瀏覽器中，自最後一次自動儲存起保留
+            2
+            小時；再次開啟網站時會檢查並清除過期草稿，使用者也可隨時手動清除。Google
+            相簿匯入功能目前未對外公開，僅供測試人員手動選取照片進行測試使用。
           </p>
           <p>
-            使用者匯出的 M-Picture 專案檔會以使用者設定的密碼加密；密碼不會儲存或上傳，遺失後無法復原。
+            使用者匯出的 M-Picture
+            專案檔會以使用者設定的密碼加密；密碼不會儲存或上傳，遺失後無法復原。
           </p>
         </section>
 
@@ -825,14 +1192,17 @@
         <section>
           <h3>本機專案草稿</h3>
           <p>
-            為協助使用者繼續未完成的工作，本網站會將專案欄位、設定與照片草稿儲存在目前裝置的瀏覽器中。草稿自最後一次自動儲存起保留 2 小時；再次開啟本網站時，系統會檢查並清除已過期的草稿。網站關閉期間無法主動執行刪除，因此過期資料可能由瀏覽器保留至再次開啟本網站或手動清除網站資料為止。草稿不會上傳至伺服器，使用者可隨時透過「清除目前專案」移除草稿。清除瀏覽器網站資料、使用無痕模式、變更瀏覽器或裝置後，草稿可能無法復原。
+            為協助使用者繼續未完成的工作，本網站會將專案欄位、設定與照片草稿儲存在目前裝置的瀏覽器中。草稿自最後一次自動儲存起保留
+            2
+            小時；再次開啟本網站時，系統會檢查並清除已過期的草稿。網站關閉期間無法主動執行刪除，因此過期資料可能由瀏覽器保留至再次開啟本網站或手動清除網站資料為止。草稿不會上傳至伺服器，使用者可隨時透過「清除目前專案」移除草稿。清除瀏覽器網站資料、使用無痕模式、變更瀏覽器或裝置後，草稿可能無法復原。
           </p>
         </section>
 
         <section>
           <h3>加密專案檔</h3>
           <p>
-            使用者主動匯出的 M-Picture 專案檔會以使用者設定的密碼加密。密碼只用於目前瀏覽器中的加密或解密操作，不會由本網站儲存或上傳；密碼遺失後無法復原專案檔。
+            使用者主動匯出的 M-Picture
+            專案檔會以使用者設定的密碼加密。密碼只用於目前瀏覽器中的加密或解密操作，不會由本網站儲存或上傳；密碼遺失後無法復原專案檔。
           </p>
         </section>
 
@@ -878,8 +1248,9 @@
         <section>
           <h3>如何新增照片？</h3>
           <p>
-            點右下角「＋」按鈕，選擇「本機照片」可從裝置選取圖片；選擇「Google
-            相簿」會開啟測試中的 Google 授權與相簿選取流程，目前僅限測試人員使用。
+            可從電腦檔案總管選取一張或多張照片，拖曳到頁面中的「照片顯示區」。出現藍色提示框後放開，照片就會新增至目前專案；在側邊欄或頁首放開不會匯入。也可點右下角「＋」按鈕，選擇「本機照片」從裝置選取圖片；選擇「Google
+            相簿」會開啟測試中的 Google
+            授權與相簿選取流程，目前僅限測試人員使用。
           </p>
         </section>
 
@@ -893,7 +1264,7 @@
         <section>
           <h3>如何調整照片順序？</h3>
           <p>
-            在格狀或列表版面中拖曳照片，即可改變輸出順序。照片左上角的數字代表目前排序。
+            在格狀或列表版面中拖曳已匯入的照片卡片，即可改變輸出順序，此操作不會重複新增照片。照片左上角的數字代表目前排序。
           </p>
         </section>
 
@@ -901,6 +1272,37 @@
           <h3>如何旋轉照片？</h3>
           <p>
             點選一張照片後，右上工具列的旋轉按鈕會啟用。再次點選同一張照片可取消選取。
+          </p>
+        </section>
+
+        <section>
+          <h3>如何分割長截圖？</h3>
+          <p>
+            先點選照片顯示區中的一張長截圖，再點上方照片編輯工具列的剪刀按鈕。於分割視窗選擇「每頁
+            2 張（加長比例）」或「每頁 4
+            張」，檢查並拖曳調整切割線；確認切割位置後，按下「分割並取代原照片」。分割結果會在原照片的位置依序展開，也可以和一般照片混合使用。
+          </p>
+        </section>
+
+        <section>
+          <h3>如何避免長截圖切到對話文字？</h3>
+          <p>
+            自動分析只提供切割位置建議，不會辨識對話文字內容。請點選切割線，利用右側的放大檢查畫面逐一確認，並拖曳切割線避開重要文字。建議保留約
+            2% 重疊內容，降低前後分段遺漏上下文的風險。
+          </p>
+        </section>
+
+        <section>
+          <h3>長截圖分段可以排序或再次分割嗎？</h3>
+          <p>
+            可以自由拖曳排序，也可以選取其中一個分段再次使用剪刀分割；新分段會插入原位置，並自動重新編排同一組長截圖的分段順序。若分段被打散，系統會提醒先恢復順序。分段過小時也會顯示清晰度提醒。
+          </p>
+        </section>
+
+        <section>
+          <h3>可以刪除不需要的長截圖分段嗎？</h3>
+          <p>
+            可以。確認刪除後，系統會將同一組剩餘分段依目前順序重新編號，刻意刪除不會持續顯示群組不完整提醒，也不會改變一般照片的位置。若群組只剩一張，該照片會自動改為一般照片。舊專案若已經缺少分段，可從紅色提醒中的「逐組檢查」選擇「接受目前分段」；接受後，已刪除的分段無法復原。
           </p>
         </section>
 
@@ -914,7 +1316,8 @@
         <section>
           <h3>離開網頁後可以繼續編輯嗎？</h3>
           <p>
-            可以。變更會自動儲存在目前瀏覽器中，並自最後一次自動儲存起保留 2 小時。請在期限內重新開啟網頁並選擇繼續編輯；超過期限的草稿會在再次開啟網站時清除。若需要保存更久，請從右上角下載選單匯出加密專案檔。
+            可以。變更會自動儲存在目前瀏覽器中，並自最後一次自動儲存起保留 2
+            小時。請在期限內重新開啟網頁並選擇繼續編輯；超過期限的草稿會在再次開啟網站時清除。若需要保存更久，請從右上角下載選單匯出加密專案檔。
           </p>
         </section>
 
@@ -948,8 +1351,9 @@
         <section>
           <h3>Auto-fill EXIF 一定會有日期嗎？</h3>
           <p>
-            不一定。拍攝日期取決於照片來源、格式與原始 EXIF
-            資訊；部分照片可能沒有日期資料，仍需手動確認或補填。
+            不一定。拍攝日期取決於照片來源、格式與原始 EXIF 資訊。開啟 Auto-fill
+            EXIF
+            後，系統會列出缺少日期的照片編號；點選「前往填寫」可切換至列表模式，缺少日期的欄位下方會顯示橘色警語。手動輸入日期後，提醒會自動消失。
           </p>
         </section>
 
