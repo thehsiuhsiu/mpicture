@@ -284,7 +284,7 @@ const buildPrintHTML = (title, pdfFont) => {
                 ${pdfFont.face || ""}
                 @page {
                     size: A4;
-                    margin: 12mm 20mm 1mm 20mm;
+                    margin: 12mm 16mm 1mm 16mm;
                 }
                 * {
                     margin: 0;
@@ -364,10 +364,10 @@ const buildPrintHTML = (title, pdfFont) => {
                     border-left: 1px solid #000;
                 }
                 .multi-photo-grid.count-2 {
-                    grid-template-rows: 250mm;
+                    grid-template-rows: 260mm;
                 }
                 .multi-photo-grid.count-4 {
-                    grid-template-rows: repeat(2, 128mm);
+                    grid-template-rows: repeat(2, 130mm);
                 }
                 .multi-photo-cell {
                     display: flex;
@@ -422,6 +422,16 @@ const buildPrintHTML = (title, pdfFont) => {
                     overflow-wrap: anywhere;
                     -webkit-box-orient: vertical;
                     -webkit-line-clamp: 1;
+                }
+                .multi-photo-grid.count-2 .multi-photo-caption {
+                    height: auto;
+                    min-height: 7mm;
+                    max-height: 12mm;
+                }
+                .multi-photo-grid.count-2 .multi-photo-description {
+                    max-height: 12mm;
+                    white-space: pre-wrap;
+                    -webkit-line-clamp: 2;
                 }
                 @media print {
                     .page-container {

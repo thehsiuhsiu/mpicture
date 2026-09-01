@@ -17,7 +17,7 @@ import {
   refreshDisplayedPhotoNumbers,
 } from "./imageHandler.js";
 import { handleGenerateWrapper } from "./docxGenerator.js?v=20260901-12";
-import { handleGeneratePDF } from "./pdfGenerator.js?v=20260901-12";
+import { handleGeneratePDF } from "./pdfGenerator.js?v=20260901-15";
 import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
 import { initGooglePhotosImport } from "./googlePhotos.js";
 import {
