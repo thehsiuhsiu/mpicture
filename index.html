@@ -52,7 +52,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-    <link rel="stylesheet" href="styles.css?v=20260901-17" />
+    <link rel="stylesheet" href="styles.css?v=20260903-25" />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap"
       rel="stylesheet"
@@ -100,6 +100,31 @@
               <span class="material-symbols-outlined">picture_as_pdf</span>
               <span>列印/PDF</span>
             </button>
+            <div class="download-page-number-setting">
+              <span class="download-setting-title">PDF 頁碼</span>
+              <label class="pdf-page-number-toggle" for="pdfPageNumberEnabled">
+                <span>顯示頁碼</span>
+                <input type="checkbox" id="pdfPageNumberEnabled" />
+                <span class="pdf-page-number-toggle-track" aria-hidden="true"></span>
+              </label>
+              <label
+                class="pdf-page-start-setting"
+                id="pdfPageStartSetting"
+                for="pdfPageStartNumber"
+                hidden
+              >
+                <span>頁碼起始編號</span>
+                <input
+                  type="number"
+                  id="pdfPageStartNumber"
+                  min="1"
+                  max="9999"
+                  step="1"
+                  inputmode="numeric"
+                  value="1"
+                />
+              </label>
+            </div>
             <div class="download-font-setting">
               <label for="pdfFontSelect">PDF 字型</label>
               <select
@@ -1018,7 +1043,7 @@
       </div>
     </div>
 
-    <script type="module" src="js/main.js?v=20260901-21"></script>
+    <script type="module" src="js/main.js?v=20260903-23"></script>
 
     <footer>
       <h3>Copyright© 2024 M-Picture. All rights reserved.</h3>

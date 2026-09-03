@@ -1067,6 +1067,7 @@ html[data-theme="dark"] .project-save-status[data-status="pending"] {
 }
 
 .document-page {
+  position: relative;
   box-sizing: border-box;
   flex: 0 0 auto;
   width: 794px;
@@ -1080,6 +1081,17 @@ html[data-theme="dark"] .project-save-status[data-status="pending"] {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
   font-size: 16px;
   line-height: 1.35;
+}
+
+.document-page-number {
+  position: absolute;
+  right: 0;
+  bottom: 14px;
+  left: 0;
+  color: #000000;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
 }
 
 .document-page-title {
@@ -1883,6 +1895,149 @@ body.format-middle .image-address-input {
   display: none;
 }
 
+.download-page-number-setting {
+  padding: 2px 16px 8px 44px;
+  background: var(--modal-content-bg);
+  color: var(--modal-content-text);
+  font-family: "Noto Sans TC", sans-serif;
+  font-size: 12px;
+}
+
+.download-setting-title {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--modal-content-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pdf-page-number-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--modal-content-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pdf-page-number-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.pdf-page-number-toggle-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--switch-bg);
+  transition: background 0.2s;
+}
+
+.pdf-page-number-toggle-track::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  content: "";
+  transition: transform 0.2s;
+}
+
+.pdf-page-number-toggle input:checked + .pdf-page-number-toggle-track {
+  background: var(--switch-bg-checked);
+}
+
+.pdf-page-number-toggle input:checked + .pdf-page-number-toggle-track::after {
+  transform: translateX(14px);
+}
+
+.pdf-page-number-toggle input:focus-visible + .pdf-page-number-toggle-track {
+  outline: 2px solid var(--link-primary);
+  outline-offset: 2px;
+}
+
+.pdf-page-start-setting {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--modal-content-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.zip-controls .download-menu .pdf-page-number-toggle,
+.zip-controls .download-menu .pdf-page-start-setting {
+  margin-bottom: 0;
+  padding-left: 0;
+  color: var(--sidebar-label);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pdf-page-start-setting[hidden] {
+  display: none;
+}
+
+.pdf-page-start-setting input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--modal-content-text);
+  font: inherit;
+  font-weight: 600;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] .pdf-page-start-setting input {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #383838;
+  color: #f1f3f5;
+  color-scheme: dark;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22) inset;
+}
+
+html[data-theme="dark"] .download-setting-title,
+html[data-theme="dark"] .download-font-setting label {
+  color: #f1f3f5;
+}
+
+html[data-theme="dark"]
+  .zip-controls
+  .download-menu
+  .pdf-page-number-toggle,
+html[data-theme="dark"]
+  .zip-controls
+  .download-menu
+  .pdf-page-start-setting {
+  color: #aeb6c2;
+}
+
+html[data-theme="dark"] .pdf-page-number-toggle-track {
+  background: #4b5058;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+html[data-theme="dark"]
+  .pdf-page-number-toggle
+  input:checked
+  + .pdf-page-number-toggle-track {
+  background: var(--switch-bg-checked);
+}
+
 .download-option:first-child {
   border-radius: 12px 12px 0 0;
 }
@@ -1897,32 +2052,40 @@ body.format-middle .image-address-input {
 }
 
 .download-font-setting {
-  padding: 6px 16px 12px;
+  padding: 4px 16px 12px 44px;
   border-bottom: 1px solid var(--shadow-secondary);
   background: var(--modal-content-bg);
+}
+
+html[data-theme="dark"] .download-font-setting {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 .download-font-setting label {
   display: block;
   margin: 0 0 6px;
   padding: 0;
-  color: var(--sidebar-label);
+  color: var(--modal-content-text);
   font-family: "Noto Sans TC", sans-serif;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .download-font-setting .pdf-font-trigger {
-  min-height: 38px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  border-radius: 10px;
-  font-size: 14px;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
 .download-font-setting .pdf-font-menu {
   top: calc(100% + 6px);
+}
+
+.download-font-setting .pdf-font-option-name {
+  font-size: 13px;
 }
 
 html[data-theme="dark"] .download-font-setting .pdf-font-trigger {
