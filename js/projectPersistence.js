@@ -3,6 +3,7 @@ import { IMAGE_SECURITY_LIMITS } from "./imageHandler.js";
 import { PROJECT_CHANGED_EVENT } from "./projectEvents.js";
 import { createObjectUrl, revokeObjectUrl, showToast } from "./utils.js";
 import { normalizePhotoStartNumber } from "./photoNumbering.js";
+import { normalizePdfPageStartNumber } from "./pageNumbering.js";
 
 const DATABASE_NAME = "mpicture-local-projects-v1";
 const DATABASE_VERSION = 2;
@@ -13,8 +14,8 @@ const DRAFT_RETENTION_MS = 2 * 60 * 60 * 1000;
 const AUTOSAVE_DELAY_MS = 1000;
 
 const PROJECT_FORMAT = "m-picture-project";
-const PROJECT_VERSION = 5;
-const SUPPORTED_PROJECT_VERSIONS = new Set([1, 2, 3, 4, PROJECT_VERSION]);
+const PROJECT_VERSION = 6;
+const SUPPORTED_PROJECT_VERSIONS = new Set([1, 2, 3, 4, 5, PROJECT_VERSION]);
 const PROJECT_MAGIC = new Uint8Array([
   0x4d, 0x50, 0x49, 0x43, 0x54, 0x55, 0x52, 0x45,
 ]);
@@ -540,6 +541,8 @@ const normalizeProjectStructure = (rawProject) => {
       "multiPhotoCount",
       "multiPhotoOrder",
       "photoStartNumber",
+      "pdfPageNumberEnabled",
+      "pdfPageStartNumber",
     ]),
     "專案設定",
   );
@@ -613,6 +616,16 @@ const normalizeProjectStructure = (rawProject) => {
         999,
         "照片起始編號",
       ),
+      pdfPageNumberEnabled: requireBoolean(
+        settings.pdfPageNumberEnabled ?? false,
+        "PDF 頁碼顯示設定",
+      ),
+      pdfPageStartNumber: requireInteger(
+        settings.pdfPageStartNumber ?? 1,
+        1,
+        9999,
+        "PDF 頁碼起始編號",
+      ),
     },
     images,
   };
@@ -651,6 +664,12 @@ const captureProject = () => {
       photoStartNumber: normalizePhotoStartNumber(
         document.getElementById("photoStartNumber")?.value || 1,
       ),
+      pdfPageNumberEnabled: Boolean(
+        document.getElementById("pdfPageNumberEnabled")?.checked,
+      ),
+      pdfPageStartNumber: normalizePdfPageStartNumber(
+        document.getElementById("pdfPageStartNumber")?.value || 1,
+      ),
     },
     images: state.selectedImages.map((image) => ({
       name: image.name,
@@ -685,7 +704,9 @@ const hasMeaningfulContent = (project) => {
     project.settings.selectedFormat !== "left" ||
     project.settings.multiPhotoCount !== 4 ||
     project.settings.multiPhotoOrder !== "horizontal" ||
-    project.settings.photoStartNumber !== 1
+    project.settings.photoStartNumber !== 1 ||
+    project.settings.pdfPageNumberEnabled ||
+    project.settings.pdfPageStartNumber !== 1
   );
 };
 
@@ -1258,6 +1279,8 @@ const createEmptyProject = () => ({
     multiPhotoCount: 4,
     multiPhotoOrder: "horizontal",
     photoStartNumber: 1,
+    pdfPageNumberEnabled: false,
+    pdfPageStartNumber: 1,
   },
   images: [],
 });
@@ -1310,7 +1333,7 @@ const setupProjectControls = () => {
 const isProjectInput = (target) =>
   target instanceof Element &&
   target.matches(
-    ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-checkbox, .accident-tag-other-input, .multi-layout-input, #dateModeSwitch, #pdfFontSelect, #photoSizeSlider",
+    ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-checkbox, .accident-tag-other-input, .multi-layout-input, #dateModeSwitch, #pdfFontSelect, #photoSizeSlider, #pdfPageNumberEnabled, #pdfPageStartNumber",
   );
 
 export const shouldWarnBeforeUnload = () => dirty || saveInProgress;

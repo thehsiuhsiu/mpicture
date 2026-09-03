@@ -5,6 +5,10 @@ import {
   getMultiPhotoSettings,
 } from "./multiPhotoLayout.js";
 import { getPhotoNumber } from "./photoNumbering.js";
+import {
+  getPdfPageNumber,
+  getPdfPageNumberSettings,
+} from "./pageNumbering.js";
 
 const PREVIEW_UPDATE_DELAY_MS = 220;
 const MIN_ZOOM = 0.5;
@@ -361,6 +365,17 @@ const renderPreview = () => {
       });
   }
 
+  const pageNumberSettings = getPdfPageNumberSettings();
+  if (pageNumberSettings.enabled) {
+    page.appendChild(
+      createElement(
+        "div",
+        "document-page-number",
+        `第 ${getPdfPageNumber(currentPage, pageNumberSettings.startNumber)} 頁`,
+      ),
+    );
+  }
+
   stage.appendChild(page);
   detectOverflow(token);
 };
@@ -409,7 +424,7 @@ export const initDocumentPreview = () => {
     if (
       event.target instanceof Element &&
       event.target.matches(
-        ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-other-input",
+        ".sidebar-input, .image-date-input, .image-address-input, .image-description-textarea, .accident-tag-other-input, #pdfPageStartNumber",
       )
     ) {
       scheduleRender();
@@ -419,7 +434,7 @@ export const initDocumentPreview = () => {
     if (
       event.target instanceof Element &&
       event.target.matches(
-        "#dateModeSwitch, #pdfFontSelect, .accident-tag-checkbox, .multi-layout-input",
+        "#dateModeSwitch, #pdfFontSelect, #pdfPageNumberEnabled, .accident-tag-checkbox, .multi-layout-input",
       )
     ) {
       scheduleRender(0);

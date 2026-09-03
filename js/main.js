@@ -17,20 +17,21 @@ import {
   refreshDisplayedPhotoNumbers,
 } from "./imageHandler.js";
 import { handleGenerateWrapper } from "./docxGenerator.js?v=20260901-12";
-import { handleGeneratePDF } from "./pdfGenerator.js?v=20260901-15";
+import { handleGeneratePDF } from "./pdfGenerator.js?v=20260903-17";
 import { EMPTY_STATE_HTML, showToast, createObjectUrl } from "./utils.js";
 import { initGooglePhotosImport } from "./googlePhotos.js";
 import {
   initProjectPersistence,
   shouldWarnBeforeUnload,
-} from "./projectPersistence.js?v=20260901-12";
+} from "./projectPersistence.js?v=20260903-13";
 import { notifyProjectChanged } from "./projectEvents.js";
-import { initDocumentPreview } from "./documentPreview.js?v=20260901-12";
+import { initDocumentPreview } from "./documentPreview.js?v=20260903-13";
 import {
   getPhotoNumber,
   normalizePhotoStartNumber,
   updatePhotoNumberingWarning,
 } from "./photoNumbering.js";
+import { normalizePdfPageStartNumber } from "./pageNumbering.js";
 import { initLongScreenshotSplitter } from "./longScreenshotSplitter.js?v=20260901-15";
 import {
   confirmSplitOrderBeforeExport,
@@ -227,6 +228,25 @@ const applyProjectSnapshot = async (project) => {
   const startNumberInput = document.getElementById("photoStartNumber");
   if (startNumberInput) startNumberInput.value = String(restoredStartNumber);
 
+  state.pdfPageNumberEnabled = Boolean(
+    project.settings.pdfPageNumberEnabled ?? false,
+  );
+  state.pdfPageStartNumber = normalizePdfPageStartNumber(
+    project.settings.pdfPageStartNumber ?? 1,
+  );
+  const pageNumberEnabled = document.getElementById("pdfPageNumberEnabled");
+  const pageStartNumber = document.getElementById("pdfPageStartNumber");
+  const pageStartSetting = document.getElementById("pdfPageStartSetting");
+  if (pageNumberEnabled) {
+    pageNumberEnabled.checked = state.pdfPageNumberEnabled;
+  }
+  if (pageStartNumber) {
+    pageStartNumber.value = String(state.pdfPageStartNumber);
+  }
+  if (pageStartSetting) {
+    pageStartSetting.hidden = !state.pdfPageNumberEnabled;
+  }
+
   const restoredImages = project.images.map((image, index) => ({
     id: Date.now() + index + Math.random(),
     blob: image.blob,
@@ -402,6 +422,35 @@ const setupPhotoNumbering = () => {
   input.addEventListener("blur", () => applyNumbering(true));
   state.photoStartNumber = normalizePhotoStartNumber(input.value);
   updatePhotoNumberingWarning();
+};
+
+const setupPdfPageNumbering = () => {
+  const enabledInput = document.getElementById("pdfPageNumberEnabled");
+  const startInput = document.getElementById("pdfPageStartNumber");
+  const startSetting = document.getElementById("pdfPageStartSetting");
+  if (!enabledInput || !startInput || !startSetting) return;
+
+  const updateVisibility = () => {
+    state.pdfPageNumberEnabled = enabledInput.checked;
+    startSetting.hidden = !enabledInput.checked;
+  };
+  const applyStartNumber = (commitValue = false) => {
+    const normalized = normalizePdfPageStartNumber(startInput.value);
+    state.pdfPageStartNumber = normalized;
+    if (commitValue) startInput.value = String(normalized);
+    notifyProjectChanged();
+  };
+
+  enabledInput.addEventListener("change", () => {
+    updateVisibility();
+    notifyProjectChanged();
+  });
+  startInput.addEventListener("input", () => applyStartNumber(false));
+  startInput.addEventListener("change", () => applyStartNumber(true));
+  startInput.addEventListener("blur", () => applyStartNumber(true));
+
+  state.pdfPageStartNumber = normalizePdfPageStartNumber(startInput.value);
+  updateVisibility();
 };
 
 const init = () => {
@@ -1081,6 +1130,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDateModeSwitch();
   setupMultiPhotoSettings();
   setupPhotoNumbering();
+  setupPdfPageNumbering();
   setupPdfFontPreview();
   setupBeforeUnload();
   setupResizeWarning();

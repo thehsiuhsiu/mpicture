@@ -13,6 +13,10 @@ import {
   getMultiPhotoSettings,
 } from "./multiPhotoLayout.js";
 import { getPhotoNumber } from "./photoNumbering.js";
+import {
+  getPdfPageNumber,
+  getPdfPageNumberSettings,
+} from "./pageNumbering.js";
 
 const PDF_PRINT_IMAGE_MAX_DIMENSION = 1800;
 
@@ -129,6 +133,7 @@ export const handleGeneratePDF = async () => {
     const caseAddress = document.getElementById("caseAddress").value;
     const caseNumber = document.getElementById("caseNumber").value;
     const pdfFont = getSelectedPdfFont();
+    const pageNumberSettings = getPdfPageNumberSettings();
 
     const title =
       state.customDocTitles[state.selectedFormat] ??
@@ -161,6 +166,7 @@ export const handleGeneratePDF = async () => {
         caseAddress,
         caseNumber,
         printableImages,
+        pageNumberSettings,
       );
     } else if (state.selectedFormat === "middle") {
       printContent += buildTrafficAccidentContent(
@@ -168,6 +174,7 @@ export const handleGeneratePDF = async () => {
         isAutoDate,
         manualDate,
         printableImages,
+        pageNumberSettings,
       );
     } else if (state.selectedFormat === "right") {
       const multiPhotoSettings = getMultiPhotoSettings();
@@ -176,6 +183,7 @@ export const handleGeneratePDF = async () => {
         printableImages,
         multiPhotoSettings.count,
         multiPhotoSettings.order,
+        pageNumberSettings,
       );
     }
 
@@ -284,7 +292,7 @@ const buildPrintHTML = (title, pdfFont) => {
                 ${pdfFont.face || ""}
                 @page {
                     size: A4;
-                    margin: 12mm 16mm 1mm 16mm;
+                    margin: 12mm 18mm 1mm 18mm;
                 }
                 * {
                     margin: 0;
@@ -343,6 +351,21 @@ const buildPrintHTML = (title, pdfFont) => {
                 }
                 .page-container:last-child {
                     page-break-after: auto;
+                }
+                .page-container.with-page-number {
+                    position: relative;
+                    box-sizing: border-box;
+                    min-height: 283mm;
+                }
+                .pdf-page-number {
+                    position: absolute;
+                    right: 0;
+                    bottom: 0;
+                    left: 0;
+                    height: 5mm;
+                    font-size: 10pt;
+                    line-height: 5mm;
+                    text-align: center;
                 }
                 .footer {
                     text-align: center;
@@ -448,6 +471,19 @@ const buildPrintHTML = (title, pdfFont) => {
     `;
 };
 
+const getPageContainerClass = (pageNumberSettings) =>
+  pageNumberSettings.enabled
+    ? "page-container with-page-number"
+    : "page-container";
+
+const buildPageNumber = (pageIndex, pageNumberSettings) =>
+  pageNumberSettings.enabled
+    ? `<div class="pdf-page-number">第 ${getPdfPageNumber(
+        pageIndex,
+        pageNumberSettings.startNumber,
+      )} 頁</div>`
+    : "";
+
 const buildCriminalContent = (
   title,
   isAutoDate,
@@ -457,13 +493,14 @@ const buildCriminalContent = (
   caseAddress,
   caseNumber,
   images,
+  pageNumberSettings,
 ) => {
   let content = "";
   const totalPages = Math.ceil(images.length / 2);
 
   for (let page = 0; page < totalPages; page++) {
     const startIdx = page * 2;
-    content += `<div class="page-container">`;
+    content += `<div class="${getPageContainerClass(pageNumberSettings)}">`;
     content += `<h1>${escapeHtml(title)}</h1>`;
     const img1 = images[startIdx];
     const customDate1 = state.imageDates[img1.id] || "";
@@ -536,19 +573,25 @@ const buildCriminalContent = (
                 </table>
             `;
     }
-    content += `</div>`;
+    content += `${buildPageNumber(page, pageNumberSettings)}</div>`;
   }
 
   return content;
 };
 
-const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
+const buildTrafficAccidentContent = (
+  title,
+  isAutoDate,
+  manualDate,
+  images,
+  pageNumberSettings,
+) => {
   let content = "";
   const totalPages = Math.ceil(images.length / 2);
 
   for (let page = 0; page < totalPages; page++) {
     const startIdx = page * 2;
-    content += `<div class="page-container">`;
+    content += `<div class="${getPageContainerClass(pageNumberSettings)}">`;
     content += `<h1>${escapeHtml(title)}</h1>`;
 
     const img1 = images[startIdx];
@@ -602,13 +645,19 @@ const buildTrafficAccidentContent = (title, isAutoDate, manualDate, images) => {
             `;
     }
 
-    content += `</div>`;
+    content += `${buildPageNumber(page, pageNumberSettings)}</div>`;
   }
 
   return content;
 };
 
-const buildMultiPhotoContent = (title, images, count, order) => {
+const buildMultiPhotoContent = (
+  title,
+  images,
+  count,
+  order,
+  pageNumberSettings,
+) => {
   let content = "";
   const pageCount = Math.ceil(images.length / count);
 
@@ -620,7 +669,7 @@ const buildMultiPhotoContent = (title, images, count, order) => {
       count,
       order,
     );
-    content += `<div class="page-container">`;
+    content += `<div class="${getPageContainerClass(pageNumberSettings)}">`;
     content += `<h1>${escapeHtml(title)}</h1>`;
     content += `<div class="multi-photo-grid count-${count}">`;
 
@@ -641,7 +690,7 @@ const buildMultiPhotoContent = (title, images, count, order) => {
         </section>`;
     });
 
-    content += `</div></div>`;
+    content += `</div>${buildPageNumber(pageIndex, pageNumberSettings)}</div>`;
   }
   return content;
 };
